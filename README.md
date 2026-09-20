@@ -122,6 +122,9 @@ drift against what is actually running.
 
 ## In CI
 
+The action is on the
+[GitHub Marketplace](https://github.com/marketplace/actions/cdclint):
+
 ```yaml
 - uses: avison9/cdclint@v0
   with:
