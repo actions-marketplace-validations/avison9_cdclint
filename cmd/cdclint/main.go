@@ -152,11 +152,7 @@ func Load(migrations, connector string, sinks, sinkConns []string) (*engine.Inpu
 	if err != nil {
 		return nil, err
 	}
-	raw, err := os.ReadFile(connector)
-	if err != nil {
-		return nil, err
-	}
-	in := &engine.Input{Source: src, Contract: c, Patterns: c, ConnectorText: string(raw)}
+	in := &engine.Input{Source: src, Contract: c, Patterns: c}
 	for _, f := range sinkConns {
 		m, err := connect.ReadFile(f)
 		if err != nil {
@@ -190,9 +186,11 @@ func Load(migrations, connector string, sinks, sinkConns []string) (*engine.Inpu
 	return in, nil
 }
 
-// LoadBase reads the migrations and the connector as they were at ref,
-// straight from git, for the diff-aware rule. The sink is not needed: the
-// rule asks what the change did to the source and the connector.
+// LoadBase reads the migrations as they were at ref, straight from git,
+// and asks git whether the connector changed, for the diff-aware rule.
+// The sink is not needed: the rule asks what the change did to the source
+// and the connector. A connector that did not exist at the base counts as
+// changed, since creating it is the deliberate act the rule looks for.
 func LoadBase(ref, migrations, connector string) (*engine.Base, error) {
 	id, err := gitread.Resolve(ref)
 	if err != nil {
@@ -206,25 +204,26 @@ func LoadBase(ref, migrations, connector string) (*engine.Base, error) {
 	for _, f := range files {
 		named = append(named, postgres.NamedFile{Path: f.Path, Text: f.Text})
 	}
-	text, _, err := gitread.Show(ref, connector)
-	if err != nil {
-		return nil, fmt.Errorf("--base: %w", err)
-	}
-	b, err := BaseFromFiles(named, text)
+	src, err := postgres.ReadFiles(named)
 	if err != nil {
 		return nil, fmt.Errorf("--base %s: %w", ref, err)
 	}
-	b.Ref = id
-	return b, nil
+	changed := true
+	if _, err := gitread.Show(ref, connector); err == nil {
+		if changed, err = gitread.Changed(ref, connector); err != nil {
+			return nil, fmt.Errorf("--base: %w", err)
+		}
+	}
+	return &engine.Base{Ref: id, Source: src, ConnectorChanged: changed}, nil
 }
 
-// BaseFromFiles builds the base from migrations and a connector already in
-// memory; LoadBase feeds it from git and the corpus test from a base/
-// directory, so the diff rule is tested without a repository.
-func BaseFromFiles(migrations []postgres.NamedFile, connectorText string) (*engine.Base, error) {
+// BaseFromFiles builds the base from migrations already in memory and the
+// connector's text at the base and now; the corpus test feeds it from a
+// base/ directory, so the diff rule is tested without a repository.
+func BaseFromFiles(ref string, migrations []postgres.NamedFile, baseConnector, headConnector string) (*engine.Base, error) {
 	src, err := postgres.ReadFiles(migrations)
 	if err != nil {
 		return nil, err
 	}
-	return &engine.Base{Source: src, ConnectorText: connectorText}, nil
+	return &engine.Base{Ref: ref, Source: src, ConnectorChanged: baseConnector != headConnector}, nil
 }

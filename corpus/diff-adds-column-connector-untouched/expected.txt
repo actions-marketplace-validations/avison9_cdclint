@@ -2,7 +2,7 @@ info source-column-not-captured diff-adds-column-connector-untouched/migrations/
   public.report_validations.assigned_by_user_id exists and is not matched by column.include.list in diff-adds-column-connector-untouched/connector.json; nothing reads it yet
   the day a sink asks for it is the day it is found missing
 warning schema-before-connector diff-adds-column-connector-untouched/migrations/0035_validation_response_distance.sql:5
-  this change adds public.report_validations.response_distance_m to a captured table and does not touch diff-adds-column-connector-untouched/connector.json
+  this change adds public.report_validations.response_distance_m to a captured table and does not touch diff-adds-column-connector-untouched/connector.json (compared with base)
   the column will not be in the stream; if a sink is later given it, every row will be the default until a snapshot
   fix: either add public.report_validations.response_distance_m to column.include.list in the same change, or leave it off on purpose and say so in the connector file (any edit to it silences this)
 0 error(s), 1 warning(s), 1 info

@@ -11,9 +11,14 @@ import (
 // when the run was given one. Only the parts the diff rule compares are
 // kept.
 type Base struct {
-	Ref           string
-	Source        *model.Source
-	ConnectorText string // raw bytes at the base, to tell "untouched" from "changed"
+	// Ref names the base in findings: the full commit id when it came
+	// from git, or whatever the caller passed.
+	Ref    string
+	Source *model.Source
+	// ConnectorChanged is whether the connector file differs from the
+	// base as git sees it, so a CRLF checkout of an unchanged file does
+	// not silence the rule and a deliberate edit does.
+	ConnectorChanged bool
 }
 
 // schemaBeforeConnector is the incident itself, judged on the diff: this
@@ -32,12 +37,14 @@ type Base struct {
 //
 // A column that a sink already reads is not reported here; the static
 // sink-column-not-captured rule reports that as the error it is.
-func schemaBeforeConnector(in *Input, reads []Read, headConnectorText string) []model.Finding {
-	if in.Base == nil || in.Base.Source == nil {
-		return nil
-	}
-	if in.Base.ConnectorText != headConnectorText {
-		return nil
+//
+// The second return is the set of columns raised, keyed the way
+// sourceColumnNotCaptured keys its own, so the inventory does not list a
+// column twice.
+func schemaBeforeConnector(in *Input, reads []Read) ([]model.Finding, map[string]bool) {
+	raised := map[string]bool{}
+	if in.Base == nil || in.Base.Source == nil || in.Base.ConnectorChanged {
+		return nil, raised
 	}
 	read := map[string]bool{}
 	for _, r := range reads {
@@ -64,12 +71,22 @@ func schemaBeforeConnector(in *Input, reads []Read, headConnectorText string) []
 				continue
 			}
 			q := fmt.Sprintf("%s.%s", t.Qualified(), c.Name)
+			raised[strings.ToLower(q)] = true
 			fs = append(fs, model.Finding{
 				Rule: "schema-before-connector", Severity: model.Warning, Pos: c.Pos,
-				Message: fmt.Sprintf("this change adds %s to a captured table and does not touch %s\nthe column will not be in the stream; if a sink is later given it, every row will be the default until a snapshot", q, in.Contract.Pos().File),
+				Message: fmt.Sprintf("this change adds %s to a captured table and does not touch %s (compared with %s)\nthe column will not be in the stream; if a sink is later given it, every row will be the default until a snapshot", q, in.Contract.Pos().File, short(in.Base.Ref)),
 				Fix:     fmt.Sprintf("either %s in the same change, or leave it off on purpose and say so in the connector file (any edit to it silences this)", edit(in.Contract.ColumnListSetting(), q)),
 			})
 		}
 	}
-	return fs
+	return fs, raised
+}
+
+// short abbreviates a full commit id the way git does; anything else (a
+// branch name, a path) is shown as given.
+func short(ref string) string {
+	if len(ref) == 40 && strings.Trim(ref, "0123456789abcdef") == "" {
+		return ref[:12]
+	}
+	return ref
 }

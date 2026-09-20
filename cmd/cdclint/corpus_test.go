@@ -79,7 +79,7 @@ func TestCorpus(t *testing.T) {
 				t.Fatal(err)
 			}
 			if _, err := os.Stat(filepath.Join(name, "base")); err == nil {
-				in.Base = baseFromDir(t, filepath.Join(name, "base"))
+				in.Base = baseFromDir(t, filepath.Join(name, "base"), filepath.Join(name, "connector.json"))
 			}
 			got := Render(engine.Run(in))
 			expectedPath := filepath.Join(name, "expected.txt")
@@ -103,7 +103,7 @@ func TestCorpus(t *testing.T) {
 	}
 }
 
-func baseFromDir(t *testing.T, dir string) *engine.Base {
+func baseFromDir(t *testing.T, dir, headConnector string) *engine.Base {
 	t.Helper()
 	entries, err := os.ReadDir(filepath.Join(dir, "migrations"))
 	if err != nil {
@@ -122,7 +122,11 @@ func baseFromDir(t *testing.T, dir string) *engine.Base {
 	if err != nil {
 		t.Fatal(err)
 	}
-	base, err := BaseFromFiles(files, string(conn))
+	head, err := os.ReadFile(headConnector)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base, err := BaseFromFiles("base", files, string(conn), string(head))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -117,7 +117,9 @@ cdclint --migrations db/migrations \
 Add `--base origin/main` (any git ref) and the diff-aware rule judges the
 change itself: a column added to a captured table with the connector left
 untouched is raised while the author is still there. The action does this
-on every pull request by default.
+on every pull request by default, against the base branch's tip. Paths on
+the command line are relative to the current directory, in the working
+tree and at the base alike, so it runs from a subdirectory of a monorepo.
 
 Files in, findings out, non-zero exit. No database, no daemon, no credentials.
 Under a second on a laptop. `--fail-on warning` or `info` raises the bar;
