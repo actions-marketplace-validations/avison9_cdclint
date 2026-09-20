@@ -4,7 +4,8 @@ Lint the contract between your database, your Debezium connector and your
 sink, before the deploy that silently drops a column.
 
 **Status: v0.1 in progress.** Seven rules run against a corpus of real
-incidents; three more are next. Not yet released as a binary.
+incidents; three more are next. The first tagged release is imminent; until
+then, install with `go install` from `main`.
 
 ## Why are my columns null?
 
@@ -67,7 +68,32 @@ error sink-column-not-captured
        deploy the connector, then apply the sink schema
 ```
 
-## How it will run
+## Install
+
+Homebrew, on macOS or Linux:
+
+```
+brew install avison9/tap/cdclint
+```
+
+A release archive for your OS and CPU, from
+[Releases](https://github.com/avison9/cdclint/releases): unpack it and put
+`cdclint` on your PATH. `checksums.txt` beside the archives is signed with
+cosign, keyless, by this repository's release workflow:
+
+```
+cosign verify-blob --certificate checksums.txt.pem --signature checksums.txt.sig \
+  --certificate-identity-regexp 'github.com/avison9/cdclint' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com checksums.txt
+```
+
+With Go:
+
+```
+go install github.com/avison9/cdclint/cmd/cdclint@latest
+```
+
+## Run it
 
 ```
 cdclint --migrations db/migrations \
@@ -81,14 +107,31 @@ topics map to tables the way the connector maps them:
 ```
 cdclint --migrations db/migrations \
         --connector cdc/postgres-source.json \
-        --sink warehouse/ddl \
+        --sink snowflake:warehouse/ddl \
         --sink-connector cdc/snowflake-sink.json
 ```
 
 Files in, findings out, non-zero exit. No database, no daemon, no credentials.
-Under a second on a laptop. A GitHub Action makes it five lines of YAML. A
+Under a second on a laptop. `--fail-on warning` or `info` raises the bar;
+`--format json` is for anything that wants to post findings somewhere. A
 later live mode reads the deployed Postgres, Kafka Connect and sink to report
 drift against what is actually running.
+
+## In CI
+
+```yaml
+- uses: avison9/cdclint@v1
+  with:
+    migrations: db/migrations
+    connector: cdc/postgres-source.json
+    sink: analytics/schema
+```
+
+The step fails the pull request when the three files disagree, with the
+finding and the fix in the log. Several sinks or sink connectors go one per
+line; `fail-on`, `version` and `working-directory` are the other inputs. The
+action downloads the release binary for the runner and verifies its
+checksum before running it.
 
 ## Sinks, out of the box in v1
 
