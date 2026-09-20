@@ -9,7 +9,7 @@
 #       sink: analytics/schema
 #
 name: cdclint
-description: Lint the contract between your database, your Debezium connector and your sink, before the deploy that silently drops a column.
+description: Lint the contract between your database, your Debezium connector and your warehouse before a deploy silently drops a column.
 author: avison9
 branding:
   icon: check-circle
