@@ -124,6 +124,11 @@ Extracted from a Postgres to ClickHouse pipeline that had the rule
 times in a year. A team that knows the trap hits it four times; a team that
 does not hits it more and diagnoses it slower.
 
+## Contributing
+
+Start with [CONTRIBUTING.md](CONTRIBUTING.md): every change begins as a
+corpus entry. AI coding agents read [AGENTS.md](AGENTS.md) first.
+
 ## License
 
 Apache-2.0. See [LICENSE](LICENSE).
