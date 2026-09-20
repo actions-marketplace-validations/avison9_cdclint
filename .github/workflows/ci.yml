@@ -5,12 +5,21 @@ on:
   pull_request:
 jobs:
   go:
-    runs-on: ubuntu-latest
+    # Pinned rather than ubuntu-latest: the label moves to Ubuntu 26 on
+    # 2026-10-19 and a CI image should change when this file does, not
+    # when GitHub's calendar does.
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      # checkout v5 and setup-go v6 are the first majors that run on Node 24; v4 and v5 ran on
+      # Node 20, which the runners deprecated in September 2025.
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+          # Standard library only, so there is no go.sum to key a module
+          # cache on; with cache on, setup-go warns that it cannot find one.
+          cache: false
+      - run: test -z "$(gofmt -l .)" || { gofmt -l .; echo "gofmt: files above are not formatted"; exit 1; }
       - run: go vet ./...
       - run: go build ./...
       - run: go test ./...
