@@ -26,6 +26,7 @@ The rest exercise one path each:
 | `clickhouse-kafka-connect` | a ClickHouse MergeTree table fed by the Kafka Connect sink rather than a Kafka-engine table |
 | `kafka-topic-typo` | a Kafka-engine table naming a topic nothing produces |
 | `include-list-typo` | an include-list pattern that matches no column, and the read it silently breaks |
+| `diff-adds-column-connector-untouched` | the diff rule: `base/` holds the migrations and connector before the change; the change adds a column and leaves the connector alone |
 
 ## Layout of an entry
 
@@ -34,6 +35,7 @@ migrations/           source migrations, applied in name order
 connector.json        the Debezium source connector, full document or bare config
 sink/                 ClickHouse DDL; or sink.<dialect>/ for bigquery, snowflake, iceberg
 sink-connector.json   optional Kafka Connect sink connector config
+base/                 optional; migrations/ and connector.json before the change, for the diff rule
 expected.txt          the exact text output; regenerate with go test ./cmd/cdclint -run TestCorpus -update
 PENDING               optional; names the rule the entry waits for, and the test skips it
 ```

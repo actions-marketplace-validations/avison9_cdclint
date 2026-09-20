@@ -178,3 +178,14 @@ func ReadDir(dir string) (*Result, error) {
 	}
 	return &Result{Sink: &model.Sink{Tables: ts.List}, Views: h.views, Files: files}, nil
 }
+
+// ReadFiles reads DDL already in memory, in the order given.
+func ReadFiles(files []sqlddl.NamedFile) *Result {
+	h := &hook{}
+	ts := sqlddl.ReadFiles(files, "clickhouse", h)
+	var names []string
+	for _, f := range files {
+		names = append(names, f.Path)
+	}
+	return &Result{Sink: &model.Sink{Tables: ts.List}, Views: h.views, Files: names}
+}

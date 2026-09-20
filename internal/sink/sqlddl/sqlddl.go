@@ -89,15 +89,30 @@ func ReadDir(dir, sink string, hook Hook) (*Tables, []string, error) {
 		}
 	}
 	sort.Strings(files)
-	ts := &Tables{Sink: sink}
+	var named []NamedFile
 	for _, f := range files {
 		b, err := os.ReadFile(f)
 		if err != nil {
 			return nil, nil, err
 		}
-		Apply(ts, f, string(b), hook)
+		named = append(named, NamedFile{Path: f, Text: string(b)})
 	}
-	return ts, files, nil
+	return ReadFiles(named, sink, hook), files, nil
+}
+
+// NamedFile is one DDL file's content, named by the path findings show.
+type NamedFile struct {
+	Path string
+	Text string
+}
+
+// ReadFiles applies DDL already in memory, in the order given.
+func ReadFiles(files []NamedFile, sink string, hook Hook) *Tables {
+	ts := &Tables{Sink: sink}
+	for _, f := range files {
+		Apply(ts, f.Path, f.Text, hook)
+	}
+	return ts
 }
 
 // Apply runs one file's statements.

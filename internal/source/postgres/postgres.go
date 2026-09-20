@@ -37,17 +37,33 @@ func ReadDir(dir string) (*model.Source, []string, error) {
 		}
 	}
 	sort.Strings(files)
-	src := &model.Source{}
+	var named []NamedFile
 	for _, f := range files {
 		b, err := os.ReadFile(f)
 		if err != nil {
 			return nil, nil, err
 		}
-		if err := Apply(src, f, string(b)); err != nil {
-			return nil, nil, fmt.Errorf("%s: %w", f, err)
+		named = append(named, NamedFile{Path: f, Text: string(b)})
+	}
+	src, err := ReadFiles(named)
+	return src, files, err
+}
+
+// NamedFile is one migration's content, named by the path findings show.
+type NamedFile struct {
+	Path string
+	Text string
+}
+
+// ReadFiles applies migrations already in memory, in the order given.
+func ReadFiles(files []NamedFile) (*model.Source, error) {
+	src := &model.Source{}
+	for _, f := range files {
+		if err := Apply(src, f.Path, f.Text); err != nil {
+			return nil, fmt.Errorf("%s: %w", f.Path, err)
 		}
 	}
-	return src, files, nil
+	return src, nil
 }
 
 // Apply runs one file's statements against src.

@@ -43,6 +43,13 @@ inputs:
     description: Directory the paths above are relative to.
     required: false
     default: .
+  base:
+    description: >-
+      Git ref the change is judged against, for the schema-before-connector
+      rule. On pull_request events it defaults to the pull request's base
+      commit; set it to "none" to disable the diff rule.
+    required: false
+    default: ""
 
 outputs:
   exit-code:
@@ -109,9 +116,27 @@ runs:
         SINKS: ${{ inputs.sink }}
         SINK_CONNECTORS: ${{ inputs.sink-connector }}
         FAIL_ON: ${{ inputs.fail-on }}
+        BASE: ${{ inputs.base }}
+        PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
       run: |
         set -uo pipefail
         args=(--migrations "$MIGRATIONS" --connector "$CONNECTOR" --fail-on "$FAIL_ON")
+        # The diff rule needs the base commit's objects. actions/checkout
+        # fetches one commit by default, so fetch the base by its id;
+        # GitHub serves a fetch of a reachable commit id.
+        if [ -z "$BASE" ] && [ -n "$PR_BASE_SHA" ]; then
+          BASE="$PR_BASE_SHA"
+        fi
+        if [ -n "$BASE" ] && [ "$BASE" != "none" ]; then
+          if ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            git fetch --no-tags --depth=1 origin "$BASE" 2>&1 | tail -1 || true
+          fi
+          if git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            args+=(--base "$BASE")
+          else
+            echo "cdclint: could not fetch base $BASE; the schema-before-connector rule is skipped this run" >&2
+          fi
+        fi
         while IFS= read -r line; do
           [ -n "$line" ] && args+=(--sink "$line")
         done <<< "$SINKS"

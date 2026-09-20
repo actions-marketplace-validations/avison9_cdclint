@@ -19,10 +19,12 @@ import (
 
 	"github.com/avison9/cdclint/internal/capture/debezium"
 	"github.com/avison9/cdclint/internal/engine"
+	"github.com/avison9/cdclint/internal/gitread"
 	"github.com/avison9/cdclint/internal/model"
 	"github.com/avison9/cdclint/internal/sink/clickhouse"
 	"github.com/avison9/cdclint/internal/sink/connect"
 	"github.com/avison9/cdclint/internal/sink/sqlddl"
+	"github.com/avison9/cdclint/internal/source/postgres"
 )
 
 // version is set by the release build with -ldflags "-X main.version=...".
@@ -46,6 +48,7 @@ func run(args []string) int {
 		sinkConns  multi
 		format     = fs.String("format", "text", "output format: text or json")
 		minSev     = fs.String("fail-on", "error", "exit non-zero at this severity or above: error, warning, info")
+		base       = fs.String("base", "", "git ref of the change's base (a branch, a commit, origin/main); enables schema-before-connector, which judges the diff")
 		showVer    = fs.Bool("version", false, "print the version and exit")
 	)
 	fs.Var(&sinks, "sink", "sink DDL directory as [dialect:]DIR; dialect is clickhouse (default), bigquery, snowflake or iceberg; repeatable")
@@ -69,6 +72,14 @@ func run(args []string) int {
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "cdclint:", err)
 		return 2
+	}
+	if *base != "" {
+		b, err := LoadBase(*base, *migrations, *connector)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "cdclint:", err)
+			return 2
+		}
+		in.Base = b
 	}
 	findings := engine.Run(in)
 	switch *format {
@@ -141,7 +152,11 @@ func Load(migrations, connector string, sinks, sinkConns []string) (*engine.Inpu
 	if err != nil {
 		return nil, err
 	}
-	in := &engine.Input{Source: src, Contract: c, Patterns: c}
+	raw, err := os.ReadFile(connector)
+	if err != nil {
+		return nil, err
+	}
+	in := &engine.Input{Source: src, Contract: c, Patterns: c, ConnectorText: string(raw)}
 	for _, f := range sinkConns {
 		m, err := connect.ReadFile(f)
 		if err != nil {
@@ -173,4 +188,43 @@ func Load(migrations, connector string, sinks, sinkConns []string) (*engine.Inpu
 		}
 	}
 	return in, nil
+}
+
+// LoadBase reads the migrations and the connector as they were at ref,
+// straight from git, for the diff-aware rule. The sink is not needed: the
+// rule asks what the change did to the source and the connector.
+func LoadBase(ref, migrations, connector string) (*engine.Base, error) {
+	id, err := gitread.Resolve(ref)
+	if err != nil {
+		return nil, fmt.Errorf("--base: %w", err)
+	}
+	files, err := gitread.Dir(ref, migrations)
+	if err != nil {
+		return nil, fmt.Errorf("--base: %w", err)
+	}
+	var named []postgres.NamedFile
+	for _, f := range files {
+		named = append(named, postgres.NamedFile{Path: f.Path, Text: f.Text})
+	}
+	text, _, err := gitread.Show(ref, connector)
+	if err != nil {
+		return nil, fmt.Errorf("--base: %w", err)
+	}
+	b, err := BaseFromFiles(named, text)
+	if err != nil {
+		return nil, fmt.Errorf("--base %s: %w", ref, err)
+	}
+	b.Ref = id
+	return b, nil
+}
+
+// BaseFromFiles builds the base from migrations and a connector already in
+// memory; LoadBase feeds it from git and the corpus test from a base/
+// directory, so the diff rule is tested without a repository.
+func BaseFromFiles(migrations []postgres.NamedFile, connectorText string) (*engine.Base, error) {
+	src, err := postgres.ReadFiles(migrations)
+	if err != nil {
+		return nil, err
+	}
+	return &engine.Base{Source: src, ConnectorText: connectorText}, nil
 }

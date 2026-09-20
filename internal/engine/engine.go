@@ -23,6 +23,11 @@ type Input struct {
 	Sinks    []*model.Sink
 	Views    []clickhouse.View
 	Mappers  []*connect.Mapper
+	// Base is set when --base was given; it enables the diff-aware rule.
+	Base *Base
+	// ConnectorText is the connector file's raw content, compared against
+	// the base's to tell an untouched connector from a changed one.
+	ConnectorText string
 }
 
 // PatternLister is implemented by contracts whose column list is a set of
@@ -126,7 +131,15 @@ func Run(in *Input) []model.Finding {
 	fs = append(fs, sinkTableNotCaptured(in, reads)...)
 	fs = append(fs, sinkColumnNotCaptured(in, reads)...)
 	fs = append(fs, sinkColumnUnknown(in, reads)...)
-	fs = append(fs, sourceColumnNotCaptured(in, reads)...)
+	// The diff rule runs before the inventory so a column it raised as a
+	// warning is not listed again as information.
+	diff := schemaBeforeConnector(in, reads, in.ConnectorText)
+	raised := map[string]bool{}
+	for _, f := range diff {
+		raised[f.Pos.String()+" "+f.Message] = true
+	}
+	fs = append(fs, diff...)
+	fs = append(fs, sourceColumnNotCaptured(in, reads, raised)...)
 	fs = append(fs, capturedColumnMissing(in)...)
 	fs = append(fs, mvColumnMatch(in)...)
 	model.Sort(fs)
@@ -221,7 +234,7 @@ func sinkColumnUnknown(in *Input, reads []Read) []model.Finding {
 	return fs
 }
 
-func sourceColumnNotCaptured(in *Input, reads []Read) []model.Finding {
+func sourceColumnNotCaptured(in *Input, reads []Read, raised map[string]bool) []model.Finding {
 	var fs []model.Finding
 	declared := map[string]bool{}
 	for _, r := range reads {
@@ -235,6 +248,9 @@ func sourceColumnNotCaptured(in *Input, reads []Read) []model.Finding {
 		}
 		for _, c := range t.Columns {
 			if in.Contract.CapturesColumn(t.Schema, t.Name, c.Name) || declared[strings.ToLower(t.Qualified()+"."+c.Name)] {
+				continue
+			}
+			if raisedFor(raised, c.Pos, t.Qualified()+"."+c.Name) {
 				continue
 			}
 			fs = append(fs, model.Finding{
@@ -298,6 +314,17 @@ func matchesAny(in *Input, pattern string) bool {
 			if m(t.Qualified() + "." + c.Name) {
 				return true
 			}
+		}
+	}
+	return false
+}
+
+// raisedFor reports whether the diff rule already produced a finding at
+// this position for this column.
+func raisedFor(raised map[string]bool, pos model.Pos, q string) bool {
+	for k := range raised {
+		if strings.HasPrefix(k, pos.String()+" ") && strings.Contains(k, " "+q+" ") {
+			return true
 		}
 	}
 	return false
