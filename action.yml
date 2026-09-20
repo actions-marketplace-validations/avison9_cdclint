@@ -2,7 +2,7 @@
 # it. Composite rather than Docker so it starts in a second and works on
 # every runner OS. Usage:
 #
-#   - uses: avison9/cdclint@v1
+#   - uses: avison9/cdclint@v0
 #     with:
 #       migrations: db/migrations
 #       connector: analytics/cdc/postgres-source.json

@@ -123,15 +123,16 @@ drift against what is actually running.
 ## In CI
 
 ```yaml
-- uses: avison9/cdclint@v1
+- uses: avison9/cdclint@v0
   with:
     migrations: db/migrations
     connector: cdc/postgres-source.json
     sink: analytics/schema
 ```
 
-The step fails the pull request when the three files disagree, with the
-finding and the fix in the log. Several sinks or sink connectors go one per
+`@v0` follows the newest 0.x release; it becomes `@v1` at 1.0. The step
+fails the pull request when the three files disagree, with the finding and
+the fix in the log. Several sinks or sink connectors go one per
 line; `fail-on`, `version` and `working-directory` are the other inputs. The
 action downloads the release binary for the runner and verifies its
 checksum before running it.
