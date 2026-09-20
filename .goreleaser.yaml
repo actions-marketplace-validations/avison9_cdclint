@@ -1,0 +1,107 @@
+# Release build, run by .github/workflows/release.yml on a v* tag. Every
+# artefact a user can download comes from this file and that workflow, on
+# GitHub's runners, never from a laptop.
+version: 2
+
+project_name: cdclint
+
+before:
+  hooks:
+    - go mod tidy
+    - go test ./...
+
+builds:
+  - id: cdclint
+    main: ./cmd/cdclint
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    # cdclint --version prints the tag it was built from.
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    flags:
+      - -trimpath
+
+archives:
+  - id: default
+    formats: [tar.gz]
+    # cdclint_0.1.0_linux_amd64.tar.gz; action.yml computes this same name.
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: "checksums.txt"
+
+# Keyless signing of the checksums through GitHub's OIDC identity, so a
+# downloaded archive can be verified against the workflow that built it:
+#   cosign verify-blob --certificate checksums.txt.pem \
+#     --signature checksums.txt.sig \
+#     --certificate-identity-regexp 'github.com/avison9/cdclint' \
+#     --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+#     checksums.txt
+signs:
+  - cmd: cosign
+    certificate: "${artifact}.pem"
+    args:
+      - sign-blob
+      - "--output-certificate=${certificate}"
+      - "--output-signature=${signature}"
+      - "${artifact}"
+      - "--yes"
+    artifacts: checksum
+
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^ci:"
+
+release:
+  github:
+    owner: avison9
+    name: cdclint
+  draft: false
+  prerelease: auto
+  header: |
+    Install: see the README. Verify: `checksums.txt` is signed with cosign,
+    keyless, by the release workflow of this repository.
+
+# Homebrew, as a cask: it installs the same archive the GitHub Release
+# serves, on macOS and Linux, from the avison9/homebrew-tap repository.
+#   brew install avison9/tap/cdclint
+homebrew_casks:
+  - name: cdclint
+    repository:
+      owner: avison9
+      name: homebrew-tap
+      branch: main
+      # A fine-grained token with contents:write on avison9/homebrew-tap,
+      # stored as the HOMEBREW_TAP_GITHUB_TOKEN secret on this repository.
+      # The workflow's own GITHUB_TOKEN cannot push to another repository.
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    directory: Casks
+    homepage: https://github.com/avison9/cdclint
+    description: "Lint the contract between your database, your Debezium connector and your sink"
+    license: Apache-2.0
+    commit_author:
+      name: avison9
+      email: avisonlivingstone@gmail.com
+    commit_msg_template: "cdclint {{ .Tag }}"
+    # The binary is not notarised with Apple, so macOS quarantines it on
+    # download; clearing the attribute after install is what every
+    # unnotarised cask does.
+    hooks:
+      post:
+        install: |
+          if system_command("/usr/bin/xattr", args: ["-h"]).exit_status == 0
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/cdclint"]
+          end

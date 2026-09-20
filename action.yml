@@ -1,0 +1,124 @@
+# The GitHub Action: downloads the release binary for the runner and runs
+# it. Composite rather than Docker so it starts in a second and works on
+# every runner OS. Usage:
+#
+#   - uses: avison9/cdclint@v1
+#     with:
+#       migrations: db/migrations
+#       connector: analytics/cdc/postgres-source.json
+#       sink: analytics/schema
+#
+name: cdclint
+description: Lint the contract between your database, your Debezium connector and your sink, before the deploy that silently drops a column.
+author: avison9
+branding:
+  icon: check-circle
+  color: blue
+
+inputs:
+  migrations:
+    description: Directory of source migrations, applied in name order.
+    required: true
+  connector:
+    description: Debezium source connector JSON.
+    required: true
+  sink:
+    description: >-
+      Sink DDL directory as [dialect:]DIR, one per line for several.
+      Dialect is clickhouse (default), bigquery, snowflake or iceberg.
+    required: true
+  sink-connector:
+    description: Kafka Connect sink connector JSON, one per line for several.
+    required: false
+    default: ""
+  fail-on:
+    description: "Exit non-zero at this severity or above: error, warning or info."
+    required: false
+    default: error
+  version:
+    description: cdclint release to run, as a tag such as v0.1.0; latest by default.
+    required: false
+    default: latest
+  working-directory:
+    description: Directory the paths above are relative to.
+    required: false
+    default: .
+
+outputs:
+  exit-code:
+    description: cdclint's exit code, 0 when the three schemas agree.
+    value: ${{ steps.run.outputs.exit-code }}
+
+runs:
+  using: composite
+  steps:
+    - name: Download cdclint
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+        repo="avison9/cdclint"
+        if [ "$VERSION" = "latest" ]; then
+          VERSION="$(curl -sSL -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/$repo/releases/latest" | jq -r .tag_name)"
+        fi
+        case "$RUNNER_OS" in
+          Linux)   os=linux ;;
+          macOS)   os=darwin ;;
+          Windows) os=windows ;;
+          *) echo "unsupported runner OS: $RUNNER_OS" >&2; exit 1 ;;
+        esac
+        case "$RUNNER_ARCH" in
+          X64)   arch=amd64 ;;
+          ARM64) arch=arm64 ;;
+          *) echo "unsupported runner architecture: $RUNNER_ARCH" >&2; exit 1 ;;
+        esac
+        # Same name .goreleaser.yaml's archives.name_template produces.
+        base="cdclint_${VERSION#v}_${os}_${arch}"
+        dir="$RUNNER_TEMP/cdclint"
+        mkdir -p "$dir"
+        url="https://github.com/$repo/releases/download/$VERSION"
+        curl -sSL -o "$dir/checksums.txt" "$url/checksums.txt"
+        if [ "$os" = windows ]; then
+          archive="$base.zip"
+        else
+          archive="$base.tar.gz"
+        fi
+        curl -sSL -o "$dir/$archive" "$url/$archive"
+        cd "$dir"
+        # The checksum file is what the release workflow signed; verifying
+        # against it is what makes "downloaded from GitHub" mean something.
+        grep " $archive\$" checksums.txt | sha256sum -c -
+        if [ "$os" = windows ]; then
+          unzip -qo "$archive"
+        else
+          tar -xzf "$archive"
+        fi
+        echo "$dir" >> "$GITHUB_PATH"
+        echo "cdclint $VERSION for $os/$arch, checksum verified"
+
+    - name: Run cdclint
+      id: run
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        MIGRATIONS: ${{ inputs.migrations }}
+        CONNECTOR: ${{ inputs.connector }}
+        SINKS: ${{ inputs.sink }}
+        SINK_CONNECTORS: ${{ inputs.sink-connector }}
+        FAIL_ON: ${{ inputs.fail-on }}
+      run: |
+        set -uo pipefail
+        args=(--migrations "$MIGRATIONS" --connector "$CONNECTOR" --fail-on "$FAIL_ON")
+        while IFS= read -r line; do
+          [ -n "$line" ] && args+=(--sink "$line")
+        done <<< "$SINKS"
+        while IFS= read -r line; do
+          [ -n "$line" ] && args+=(--sink-connector "$line")
+        done <<< "$SINK_CONNECTORS"
+        cdclint "${args[@]}"
+        code=$?
+        echo "exit-code=$code" >> "$GITHUB_OUTPUT"
+        exit $code

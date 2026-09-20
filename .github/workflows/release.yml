@@ -1,0 +1,43 @@
+name: release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  # contents: create the GitHub Release and upload its assets.
+  # id-token: the OIDC token cosign signs the checksums with, keyless.
+  contents: write
+  id-token: write
+jobs:
+  goreleaser:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # goreleaser reads the tag history for the changelog.
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: sigstore/cosign-installer@v3
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+      # `uses: avison9/cdclint@v1` needs a v1 tag that follows the newest
+      # v1.x.y release. goreleaser does not move tags, so this does, after
+      # the release exists and only for a final release (v1.2.3, not
+      # v1.2.3-rc1). Pre-1.0 tags move v0 the same way.
+      - name: Move the major tag
+        if: ${{ !contains(github.ref_name, '-') }}
+        shell: bash
+        run: |
+          major="${GITHUB_REF_NAME%%.*}"
+          git config user.name "avison9"
+          git config user.email "avisonlivingstone@gmail.com"
+          git tag -f "$major" "$GITHUB_REF_NAME"
+          git push -f origin "refs/tags/$major"
