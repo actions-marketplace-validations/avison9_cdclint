@@ -70,6 +70,9 @@ error sink-column-not-captured
 
 ## Install
 
+Per-OS steps, verification and uninstalling are in
+[INSTALLING.md](INSTALLING.md). The short version:
+
 Homebrew, on macOS or Linux:
 
 ```
