@@ -50,7 +50,9 @@ inputs:
       "none" to skip the rule. On pull_request events it defaults to the
       pull request's base branch tip. That is the tip, not the merge base:
       a column added to the base after this branch forked reads as removed
-      here, never as added, so it cannot produce a finding.
+      here, never as added, so it cannot produce a finding; and a connector
+      edited on the base after the fork reads as changed here, which
+      silences the rule for this run.
     required: false
     default: ""
 
@@ -134,7 +136,13 @@ runs:
         fi
         if [ -n "$BASE" ] && [ "$BASE" != "none" ]; then
           ref="${BASE#origin/}"
-          if git fetch --no-tags --depth=1 origin "$ref" >/dev/null 2>&1; then
+          # --depth=1 only on a clone that is already shallow; on a full
+          # clone it would make the repository shallow as a side effect.
+          depth=""
+          if [ "$(git rev-parse --is-shallow-repository 2>/dev/null)" = "true" ]; then
+            depth="--depth=1"
+          fi
+          if git fetch --no-tags $depth origin "$ref" >/dev/null 2>&1; then
             args+=(--base FETCH_HEAD)
           elif git cat-file -e "$BASE^{commit}" 2>/dev/null; then
             args+=(--base "$BASE")

@@ -19,6 +19,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -34,17 +35,43 @@ type File struct {
 // ErrNotInRef is returned by Show when the path did not exist at the ref.
 var ErrNotInRef = errors.New("path does not exist at ref")
 
+// Exists reports whether path is present at ref. Errors are git failing,
+// never a missing path. rev-parse --verify --quiet is the one form that
+// answers with an exit code, 1 for "cannot resolve", where cat-file -e
+// says "fatal" and exits 128 for a missing path the same as for a broken
+// repository. The ref itself is checked by Resolve before this is asked,
+// so 1 here means the path.
+func Exists(ref, p string) (bool, error) {
+	spec, err := spec(ref, p)
+	if err != nil {
+		return false, err
+	}
+	cmd := command("rev-parse", "--verify", "--quiet", spec)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	err = cmd.Run()
+	if err == nil {
+		return true, nil
+	}
+	var exit *exec.ExitError
+	if errors.As(err, &exit) && exit.ExitCode() == 1 {
+		return false, nil
+	}
+	return false, fmt.Errorf("git rev-parse --verify %s: %s", spec, strings.TrimSpace(stderr.String()))
+}
+
 // Show returns the file at ref. A path that did not exist there (a file
 // new in the change) is ErrNotInRef, told apart from every other failure
 // by asking git first rather than by reading its error text.
-func Show(ref, path string) (string, error) {
-	spec, err := spec(ref, path)
+func Show(ref, p string) (string, error) {
+	ok, err := Exists(ref, p)
 	if err != nil {
 		return "", err
 	}
-	if _, err := run("cat-file", "-e", spec); err != nil {
+	if !ok {
 		return "", ErrNotInRef
 	}
+	spec, _ := spec(ref, p)
 	return run("show", spec)
 }
 
@@ -53,16 +80,26 @@ func Show(ref, path string) (string, error) {
 // recursion. One git process serves the whole directory. A dir absent at
 // the ref is an empty list.
 func Dir(ref, dir string) ([]File, error) {
-	spec, err := spec(ref, dir)
+	ok, err := Exists(ref, dir)
 	if err != nil {
 		return nil, err
 	}
-	if _, err := run("cat-file", "-e", spec); err != nil {
+	if !ok {
 		return nil, nil
 	}
 	// git archive refuses a tree that does not contain the current
 	// directory, so it is given the root-relative spec and run from the
 	// repository's top level; the result is the same tree either way.
+	// path.Join folds a "../" in the caller's path into the prefix, which
+	// a plain concatenation would hand to git as "svc/../db", a path the
+	// tree does not have.
+	//
+	// CAVEAT: git archive honours the export-ignore attribute, so a
+	// migration a .gitattributes marks export-ignore is invisible at the
+	// base. Nobody marks migrations that way, and a file that is in the
+	// working tree but not at the base reads as added, which is the
+	// cautious direction: the rule may raise a column that was there all
+	// along, never miss one that was not.
 	top, err := run("rev-parse", "--show-toplevel")
 	if err != nil {
 		return nil, err
@@ -72,7 +109,7 @@ func Dir(ref, dir string) ([]File, error) {
 		return nil, err
 	}
 	rel, _ := relative(dir)
-	cmd := command("archive", "--format=tar", ref+":"+strings.TrimSpace(prefix)+rel)
+	cmd := command("archive", "--format=tar", ref+":"+path.Join(strings.TrimSpace(prefix), rel))
 	cmd.Dir = strings.TrimSpace(top)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
@@ -106,8 +143,8 @@ func Dir(ref, dir string) ([]File, error) {
 // Changed reports whether path differs between ref and the working tree,
 // as git sees it: line-ending conversion and the like do not count, so a
 // CRLF checkout of an unchanged file is unchanged.
-func Changed(ref, path string) (bool, error) {
-	rel, err := relative(path)
+func Changed(ref, p string) (bool, error) {
+	rel, err := relative(p)
 	if err != nil {
 		return false, err
 	}
@@ -133,8 +170,8 @@ func Resolve(ref string) (string, error) {
 }
 
 // spec builds the cwd-relative "<ref>:./<path>" form.
-func spec(ref, path string) (string, error) {
-	rel, err := relative(path)
+func spec(ref, p string) (string, error) {
+	rel, err := relative(p)
 	if err != nil {
 		return "", err
 	}
@@ -143,19 +180,19 @@ func spec(ref, path string) (string, error) {
 
 // relative makes path relative to the current directory, forward-slashed,
 // which is how git wants it on every OS.
-func relative(path string) (string, error) {
-	if filepath.IsAbs(path) {
+func relative(p string) (string, error) {
+	if filepath.IsAbs(p) {
 		wd, err := os.Getwd()
 		if err != nil {
 			return "", err
 		}
-		rel, err := filepath.Rel(wd, path)
-		if err != nil || strings.HasPrefix(rel, "..") {
-			return "", fmt.Errorf("%s is outside the current directory; run cdclint from the repository", path)
+		rel, err := filepath.Rel(wd, p)
+		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return "", fmt.Errorf("%s is outside the current directory; run cdclint from the repository", p)
 		}
-		path = rel
+		p = rel
 	}
-	return filepath.ToSlash(filepath.Clean(path)), nil
+	return filepath.ToSlash(filepath.Clean(p)), nil
 }
 
 func command(args ...string) *exec.Cmd {

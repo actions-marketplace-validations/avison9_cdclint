@@ -208,8 +208,12 @@ func LoadBase(ref, migrations, connector string) (*engine.Base, error) {
 	if err != nil {
 		return nil, fmt.Errorf("--base %s: %w", ref, err)
 	}
+	exists, err := gitread.Exists(ref, connector)
+	if err != nil {
+		return nil, fmt.Errorf("--base: %w", err)
+	}
 	changed := true
-	if _, err := gitread.Show(ref, connector); err == nil {
+	if exists {
 		if changed, err = gitread.Changed(ref, connector); err != nil {
 			return nil, fmt.Errorf("--base: %w", err)
 		}

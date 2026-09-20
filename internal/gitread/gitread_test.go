@@ -12,6 +12,9 @@ import (
 // "<ref>:<path>" resolved against the root and found nothing.
 func setupRepo(t *testing.T) string {
 	t.Helper()
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git is not on PATH")
+	}
 	root := t.TempDir()
 	git := func(args ...string) {
 		t.Helper()
@@ -97,6 +100,23 @@ func TestReadsRelativeToTheCurrentDirectory(t *testing.T) {
 	}
 	if id, err := Resolve("HEAD"); err != nil || len(id) != 40 {
 		t.Errorf("Resolve = %q, %v", id, err)
+	}
+}
+
+// A "../" path from a deeper directory: the archive spec must fold it
+// into the prefix rather than hand git "svc/db/../db/migrations".
+func TestDirWithParentPath(t *testing.T) {
+	root := setupRepo(t)
+	chdir(t, filepath.Join(root, "svc", "db"))
+	files, err := Dir("HEAD", "../db/migrations")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 1 || files[0].Path != filepath.Join("..", "db", "migrations", "0001_a.sql") {
+		t.Fatalf("Dir with ../ = %+v", files)
+	}
+	if text, err := Show("HEAD", "../cdc/connector.json"); err != nil || text == "" {
+		t.Errorf("Show with ../ = %q, %v", text, err)
 	}
 }
 
