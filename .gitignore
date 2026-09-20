@@ -1,0 +1,4 @@
+/cdclint
+/dist/
+*.test
+*.out
