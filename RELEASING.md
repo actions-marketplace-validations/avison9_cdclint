@@ -34,7 +34,7 @@ The `release` workflow then:
    previous tag,
 6. writes `Casks/cdclint.rb` to `avison9/homebrew-tap`,
 7. moves the major tag (`v0`, later `v1`) to this release, which is what
-   `uses: avison9/cdclint@v1` resolves.
+   `uses: avison9/cdclint@v0` resolves.
 
 Check the run, then check the three places a user meets it: the Release
 page, `brew install avison9/tap/cdclint` on a Mac or Linux box, and a

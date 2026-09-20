@@ -110,7 +110,7 @@ No install step. The action downloads the release for the runner and
 verifies its checksum:
 
 ```yaml
-- uses: avison9/cdclint@v1
+- uses: avison9/cdclint@v0
   with:
     migrations: db/migrations
     connector: cdc/postgres-source.json
