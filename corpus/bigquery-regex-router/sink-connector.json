@@ -1,0 +1,11 @@
+{
+  "name": "app-bigquery",
+  "config": {
+    "connector.class": "com.wepay.kafka.connect.bigquery.BigQuerySinkConnector",
+    "topics": "events",
+    "project": "acme-analytics",
+    "defaultDataset": "cdc",
+    "sanitizeTopics": "true",
+    "autoCreateTables": "false"
+  }
+}

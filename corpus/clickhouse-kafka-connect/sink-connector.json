@@ -1,0 +1,10 @@
+{
+  "name": "shop-clickhouse",
+  "config": {
+    "connector.class": "com.clickhouse.kafka.connect.ClickHouseSinkConnector",
+    "topics": "shop.public.orders",
+    "topic2TableMap": "shop.public.orders=orders",
+    "database": "shop",
+    "exactlyOnce": "false"
+  }
+}

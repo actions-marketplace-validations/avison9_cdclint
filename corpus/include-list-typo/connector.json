@@ -1,0 +1,11 @@
+{
+  "name": "refuseradar-postgres-source",
+  "config": {
+    "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+    "plugin.name": "pgoutput",
+    "topic.prefix": "rr",
+    "table.include.list": "public.report_validations",
+    "column.include.list": "public.report_validations\\.(id|report_id|validator_user_id|assigned_by_user_id|clearance_event_id|response|assigned_at|reponded_at|closed_at|movement_implausible|response_distance_m)",
+    "snapshot.mode": "initial"
+  }
+}

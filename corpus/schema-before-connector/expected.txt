@@ -1,0 +1,5 @@
+error sink-column-not-captured schema-before-connector/sink/0024_report_reference_number.sql:26
+  public.reports.reference_number is read by kafka_reports (reads topic rr.public.reports) but is not matched by column.include.list in schema-before-connector/connector.json
+  every row will carry the column's default, with no error anywhere
+  fix: add public.reports.reference_number to column.include.list, deploy the connector, then apply the sink schema; rows already written need a snapshot
+1 error(s), 0 warning(s), 0 info

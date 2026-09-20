@@ -2,3 +2,6 @@
 /dist/
 *.test
 *.out
+
+# Untracked: the owner's working notes and Q&A
+/notes/

@@ -1,0 +1,5 @@
+error sink-column-not-captured snowflake-topic2table/sink.snowflake/orders.sql:5
+  public.orders.currency is read by ANALYTICS.CDC.ORDERS (is fed topic shop.public.orders by snowflake-topic2table/sink-connector.json) but is not matched by column.include.list in snowflake-topic2table/connector.json
+  every row will carry the column's default, with no error anywhere
+  fix: add public.orders.currency to column.include.list, deploy the connector, then apply the sink schema; rows already written need a snapshot
+1 error(s), 0 warning(s), 0 info

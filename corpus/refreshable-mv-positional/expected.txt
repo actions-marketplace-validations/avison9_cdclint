@@ -1,0 +1,6 @@
+error mv-column-match refreshable-mv-positional/sink/0035_report_scores_view.sql:9
+  mv_report_scores is refreshable, so its SELECT is inserted into report_scores by position
+  column 9 of the SELECT is catchment_area_id but column 9 of report_scores is ward_area_id
+  between columns of the same type ClickHouse writes the wrong values and reports the refresh as finished
+  fix: reorder the SELECT in mv_report_scores to match report_scores's column order exactly
+1 error(s), 0 warning(s), 0 info

@@ -1,0 +1,9 @@
+{
+  "name": "shop-postgres",
+  "config": {
+    "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+    "topic.prefix": "shop",
+    "table.include.list": "public.orders",
+    "column.include.list": "public.orders\\.(id|customer_id|total_cents|created_at)"
+  }
+}

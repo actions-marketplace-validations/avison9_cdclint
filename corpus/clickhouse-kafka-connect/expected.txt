@@ -1,0 +1,5 @@
+error sink-column-not-captured clickhouse-kafka-connect/sink/orders.sql:8
+  public.orders.currency is read by shop.orders (is fed topic shop.public.orders by clickhouse-kafka-connect/sink-connector.json) but is not matched by column.include.list in clickhouse-kafka-connect/connector.json
+  every row will carry the column's default, with no error anywhere
+  fix: add public.orders.currency to column.include.list, deploy the connector, then apply the sink schema; rows already written need a snapshot
+1 error(s), 0 warning(s), 0 info

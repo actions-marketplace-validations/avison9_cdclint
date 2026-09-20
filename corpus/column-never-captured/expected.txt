@@ -1,0 +1,7 @@
+info source-column-not-captured column-never-captured/migrations/0033_report_validations.sql:7
+  public.report_validations.assigned_by_user_id exists and is not matched by column.include.list in column-never-captured/connector.json; nothing reads it yet
+  the day a sink asks for it is the day it is found missing
+info source-column-not-captured column-never-captured/migrations/0035_validation_response_distance.sql:5
+  public.report_validations.response_distance_m exists and is not matched by column.include.list in column-never-captured/connector.json; nothing reads it yet
+  the day a sink asks for it is the day it is found missing
+0 error(s), 0 warning(s), 2 info

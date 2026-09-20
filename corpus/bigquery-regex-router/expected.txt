@@ -1,0 +1,5 @@
+error sink-column-not-captured bigquery-regex-router/sink.bigquery/events.sql:4
+  public.events.payload is read by acme-analytics.cdc.events (is fed topic events by bigquery-regex-router/sink-connector.json) but is not matched by column.include.list in bigquery-regex-router/connector.json
+  every row will carry the column's default, with no error anywhere
+  fix: add public.events.payload to column.include.list, deploy the connector, then apply the sink schema; rows already written need a snapshot
+1 error(s), 0 warning(s), 0 info

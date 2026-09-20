@@ -1,0 +1,10 @@
+{
+  "name": "wh-iceberg",
+  "config": {
+    "connector.class": "org.apache.iceberg.connect.IcebergSinkConnector",
+    "topics": "wh.public.shipments",
+    "iceberg.tables": "cdc.shipments",
+    "iceberg.catalog": "lake",
+    "iceberg.catalog.type": "rest"
+  }
+}

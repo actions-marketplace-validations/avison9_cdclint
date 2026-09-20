@@ -1,0 +1,4 @@
+error topic-table-mapping kafka-topic-typo/sink/0020_report_validations.sql:4
+  kafka_report_validations reads topic rr.public.report_validation, which no table in the source schema produces through kafka-topic-typo/connector.json
+  fix: check the topic name against topic.prefix and any RegexRouter transform, or add the table it expects to the source migrations
+1 error(s), 0 warning(s), 0 info

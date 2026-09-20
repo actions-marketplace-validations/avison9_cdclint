@@ -1,0 +1,9 @@
+{
+  "name": "wh-postgres",
+  "config": {
+    "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+    "topic.prefix": "wh",
+    "table.include.list": "public.shipments",
+    "column.exclude.list": "public.shipments.driver_phone"
+  }
+}

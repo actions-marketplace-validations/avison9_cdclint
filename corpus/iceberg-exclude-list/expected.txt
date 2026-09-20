@@ -1,0 +1,5 @@
+error sink-column-not-captured iceberg-exclude-list/sink.iceberg/shipments.sql:6
+  public.shipments.driver_phone is read by lake.cdc.shipments (is fed topic wh.public.shipments by iceberg-exclude-list/sink-connector.json) but is not matched by column.exclude.list in iceberg-exclude-list/connector.json
+  every row will carry the column's default, with no error anywhere
+  fix: remove public.shipments.driver_phone from column.exclude.list, deploy the connector, then apply the sink schema; rows already written need a snapshot
+1 error(s), 0 warning(s), 0 info

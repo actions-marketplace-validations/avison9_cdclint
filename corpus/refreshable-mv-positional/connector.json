@@ -1,0 +1,9 @@
+{
+  "name": "refuseradar-postgres",
+  "config": {
+    "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+    "topic.prefix": "rr",
+    "table.include.list": "public.reports",
+    "column.include.list": "public.reports\\.(id|site_id|created_at)"
+  }
+}
