@@ -19,7 +19,15 @@ jobs:
           # Standard library only, so there is no go.sum to key a module
           # cache on; with cache on, setup-go warns that it cannot find one.
           cache: false
-      - run: test -z "$(gofmt -l .)" || { gofmt -l .; echo "gofmt: files above are not formatted"; exit 1; }
+      # A block scalar, because a plain one containing ": " is read by YAML
+      # as a mapping and the whole workflow fails to parse in 0 seconds.
+      - run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "gofmt: these files are not formatted"
+            echo "$unformatted"
+            exit 1
+          fi
       - run: go vet ./...
       - run: go build ./...
       - run: go test ./...
