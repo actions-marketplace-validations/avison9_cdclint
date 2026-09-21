@@ -5,7 +5,7 @@
     "plugin.name": "pgoutput",
     "topic.prefix": "rr",
     "table.include.list": "public.report_validations",
-    "column.include.list": "public.report_validations\\.(id|report_id|validator_user_id|clearance_event_id|response|assigned_at|responded_at|assigned_by_user_id)",
+    "column.exclude.list": "public.report_validations\\.(assigned_by_user_id)",
     "snapshot.mode": "initial"
   }
 }

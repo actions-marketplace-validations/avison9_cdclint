@@ -190,7 +190,9 @@ func Load(migrations, connector string, sinks, sinkConns []string) (*engine.Inpu
 // straight from git, for the diff-aware rule. The sink is not needed: the
 // rule asks what the change did to the source and the connector. A
 // connector that did not exist at the base has no contract to compare
-// with; creating it is the deliberate act the rule looks for.
+// with; creating it is the deliberate act the rule looks for. A connector
+// git reports unchanged is neither read nor parsed again: its decisions
+// are the head's.
 func LoadBase(ref, migrations, connector string) (*engine.Base, error) {
 	id, err := gitread.Resolve(ref)
 	if err != nil {
@@ -215,24 +217,34 @@ func LoadBase(ref, migrations, connector string) (*engine.Base, error) {
 	if err != nil {
 		return nil, fmt.Errorf("--base: %w", err)
 	}
+	if !changed {
+		return baseFrom(id, named, nil, false)
+	}
 	text, err := gitread.Show(ref, connector)
 	if err != nil {
 		return nil, fmt.Errorf("--base: %w", err)
 	}
-	return baseFrom(id, named, []byte(text), changed)
+	return baseFrom(id, named, []byte(text), true)
 }
 
 // BaseFromFiles builds the base from migrations already in memory and the
 // connector's text at the base and now; the corpus test feeds it from a
-// base/ directory, so the diff rule is tested without a repository.
-func BaseFromFiles(ref string, migrations []postgres.NamedFile, baseConnector, headConnector string) (*engine.Base, error) {
-	return baseFrom(ref, migrations, []byte(baseConnector), baseConnector != headConnector)
+// base/ directory, so the diff rule is tested without a repository. A nil
+// baseConnector is a connector that did not exist at the base.
+func BaseFromFiles(ref string, migrations []postgres.NamedFile, baseConnector, headConnector []byte) (*engine.Base, error) {
+	if baseConnector == nil {
+		return baseFrom(ref, migrations, nil, true)
+	}
+	if string(baseConnector) == string(headConnector) {
+		return baseFrom(ref, migrations, nil, false)
+	}
+	return baseFrom(ref, migrations, baseConnector, true)
 }
 
-// baseFrom parses the base's migrations and connector. A nil connector
-// means the file did not exist at the base; a parse failure there is an
-// error, because the base once ran and its config once parsed, so the
-// failure is in the reader and hiding it would hide the rule.
+// baseFrom parses the base's migrations and, when given, its connector. A
+// parse failure there is an error, because the base once ran and its
+// config once parsed, so the failure is in the reader and hiding it would
+// hide the rule.
 func baseFrom(ref string, migrations []postgres.NamedFile, connector []byte, changed bool) (*engine.Base, error) {
 	src, err := postgres.ReadFiles(migrations)
 	if err != nil {
