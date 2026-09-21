@@ -142,7 +142,7 @@ func Run(in *Input) []model.Finding {
 // edit words the remedy for the contract's list mode: a column is added to
 // an include list and removed from an exclude list.
 func edit(setting, name string) string {
-	if strings.Contains(setting, "exclude") || strings.Contains(setting, "blacklist") {
+	if excludes(setting) {
 		return fmt.Sprintf("remove %s from %s", name, setting)
 	}
 	return fmt.Sprintf("add %s to %s", name, setting)

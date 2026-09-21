@@ -28,7 +28,8 @@ var update = flag.Bool("update", false, "rewrite corpus expected.txt files")
 //	sink/                 ClickHouse DDL, or sink.<dialect>/ for another warehouse
 //	sink-connector.json   optional Kafka Connect sink config
 //	base/                 optional; migrations/ and connector.json as they were
-//	                      before the change, which enables the diff-aware rule
+//	                      before the change, which enables the diff-aware rule;
+//	                      no connector.json there means it is new in the change
 //	expected.txt          the exact text output
 //	PENDING               optional; names the rule the entry waits for, and skips it
 func TestCorpus(t *testing.T) {
@@ -118,15 +119,19 @@ func baseFromDir(t *testing.T, dir, headConnector string) *engine.Base {
 		files = append(files, postgres.NamedFile{Path: filepath.Join(dir, "migrations", e.Name()), Text: string(b)})
 	}
 	sort.Slice(files, func(i, j int) bool { return files[i].Path < files[j].Path })
-	conn, err := os.ReadFile(filepath.Join(dir, "connector.json"))
-	if err != nil {
+	// No connector.json under base/ means the connector is new in the
+	// change, which the rule treats as every table decided at once.
+	var conn []byte
+	if b, err := os.ReadFile(filepath.Join(dir, "connector.json")); err == nil {
+		conn = b
+	} else if !os.IsNotExist(err) {
 		t.Fatal(err)
 	}
 	head, err := os.ReadFile(headConnector)
 	if err != nil {
 		t.Fatal(err)
 	}
-	base, err := BaseFromFiles("base", files, string(conn), string(head))
+	base, err := BaseFromFiles("base", files, conn, head)
 	if err != nil {
 		t.Fatal(err)
 	}

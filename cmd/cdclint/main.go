@@ -186,11 +186,13 @@ func Load(migrations, connector string, sinks, sinkConns []string) (*engine.Inpu
 	return in, nil
 }
 
-// LoadBase reads the migrations as they were at ref, straight from git,
-// and asks git whether the connector changed, for the diff-aware rule.
-// The sink is not needed: the rule asks what the change did to the source
-// and the connector. A connector that did not exist at the base counts as
-// changed, since creating it is the deliberate act the rule looks for.
+// LoadBase reads the migrations and the connector as they were at ref,
+// straight from git, for the diff-aware rule. The sink is not needed: the
+// rule asks what the change did to the source and the connector. A
+// connector that did not exist at the base has no contract to compare
+// with; creating it is the deliberate act the rule looks for. A connector
+// git reports unchanged is neither read nor parsed again: its decisions
+// are the head's.
 func LoadBase(ref, migrations, connector string) (*engine.Base, error) {
 	id, err := gitread.Resolve(ref)
 	if err != nil {
@@ -204,30 +206,57 @@ func LoadBase(ref, migrations, connector string) (*engine.Base, error) {
 	for _, f := range files {
 		named = append(named, postgres.NamedFile{Path: f.Path, Text: f.Text})
 	}
-	src, err := postgres.ReadFiles(named)
-	if err != nil {
-		return nil, fmt.Errorf("--base %s: %w", ref, err)
-	}
 	exists, err := gitread.Exists(ref, connector)
 	if err != nil {
 		return nil, fmt.Errorf("--base: %w", err)
 	}
-	changed := true
-	if exists {
-		if changed, err = gitread.Changed(ref, connector); err != nil {
-			return nil, fmt.Errorf("--base: %w", err)
-		}
+	if !exists {
+		return baseFrom(id, named, nil, true)
 	}
-	return &engine.Base{Ref: id, Source: src, ConnectorChanged: changed}, nil
+	changed, err := gitread.Changed(ref, connector)
+	if err != nil {
+		return nil, fmt.Errorf("--base: %w", err)
+	}
+	if !changed {
+		return baseFrom(id, named, nil, false)
+	}
+	text, err := gitread.Show(ref, connector)
+	if err != nil {
+		return nil, fmt.Errorf("--base: %w", err)
+	}
+	return baseFrom(id, named, []byte(text), true)
 }
 
 // BaseFromFiles builds the base from migrations already in memory and the
 // connector's text at the base and now; the corpus test feeds it from a
-// base/ directory, so the diff rule is tested without a repository.
-func BaseFromFiles(ref string, migrations []postgres.NamedFile, baseConnector, headConnector string) (*engine.Base, error) {
+// base/ directory, so the diff rule is tested without a repository. A nil
+// baseConnector is a connector that did not exist at the base.
+func BaseFromFiles(ref string, migrations []postgres.NamedFile, baseConnector, headConnector []byte) (*engine.Base, error) {
+	if baseConnector == nil {
+		return baseFrom(ref, migrations, nil, true)
+	}
+	if string(baseConnector) == string(headConnector) {
+		return baseFrom(ref, migrations, nil, false)
+	}
+	return baseFrom(ref, migrations, baseConnector, true)
+}
+
+// baseFrom parses the base's migrations and, when given, its connector. A
+// parse failure there is an error, because the base once ran and its
+// config once parsed, so the failure is in the reader and hiding it would
+// hide the rule.
+func baseFrom(ref string, migrations []postgres.NamedFile, connector []byte, changed bool) (*engine.Base, error) {
 	src, err := postgres.ReadFiles(migrations)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("--base %s: %w", ref, err)
 	}
-	return &engine.Base{Ref: ref, Source: src, ConnectorChanged: baseConnector != headConnector}, nil
+	b := &engine.Base{Ref: ref, Source: src, ConnectorChanged: changed}
+	if connector != nil {
+		c, err := debezium.Parse(connector)
+		if err != nil {
+			return nil, fmt.Errorf("--base %s: connector: %w", ref, err)
+		}
+		b.Contract = c
+	}
+	return b, nil
 }
