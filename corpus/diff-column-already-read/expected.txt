@@ -1,0 +1,8 @@
+info source-column-not-captured diff-column-already-read/migrations/0033_report_validations.sql:7
+  public.report_validations.assigned_by_user_id exists and is not matched by column.include.list in diff-column-already-read/connector.json; nothing reads it yet
+  the day a sink asks for it is the day it is found missing
+error sink-column-not-captured diff-column-already-read/sink/0020_report_validations.sql:13
+  public.report_validations.response_distance_m is read by kafka_report_validations (reads topic rr.public.report_validations) but is not matched by column.include.list in diff-column-already-read/connector.json
+  every row will carry the column's default, with no error anywhere
+  fix: add public.report_validations.response_distance_m to column.include.list, deploy the connector, then apply the sink schema; rows already written need a snapshot
+1 error(s), 0 warning(s), 1 info

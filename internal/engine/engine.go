@@ -23,6 +23,8 @@ type Input struct {
 	Sinks    []*model.Sink
 	Views    []clickhouse.View
 	Mappers  []*connect.Mapper
+	// Base is set when --base was given; it enables the diff-aware rule.
+	Base *Base
 }
 
 // PatternLister is implemented by contracts whose column list is a set of
@@ -126,7 +128,11 @@ func Run(in *Input) []model.Finding {
 	fs = append(fs, sinkTableNotCaptured(in, reads)...)
 	fs = append(fs, sinkColumnNotCaptured(in, reads)...)
 	fs = append(fs, sinkColumnUnknown(in, reads)...)
-	fs = append(fs, sourceColumnNotCaptured(in, reads)...)
+	// The diff rule runs before the inventory so a column it raised as a
+	// warning is not listed again as information.
+	diff, raised := schemaBeforeConnector(in, reads)
+	fs = append(fs, diff...)
+	fs = append(fs, sourceColumnNotCaptured(in, reads, raised)...)
 	fs = append(fs, capturedColumnMissing(in)...)
 	fs = append(fs, mvColumnMatch(in)...)
 	model.Sort(fs)
@@ -221,7 +227,7 @@ func sinkColumnUnknown(in *Input, reads []Read) []model.Finding {
 	return fs
 }
 
-func sourceColumnNotCaptured(in *Input, reads []Read) []model.Finding {
+func sourceColumnNotCaptured(in *Input, reads []Read, raised map[string]bool) []model.Finding {
 	var fs []model.Finding
 	declared := map[string]bool{}
 	for _, r := range reads {
@@ -235,6 +241,9 @@ func sourceColumnNotCaptured(in *Input, reads []Read) []model.Finding {
 		}
 		for _, c := range t.Columns {
 			if in.Contract.CapturesColumn(t.Schema, t.Name, c.Name) || declared[strings.ToLower(t.Qualified()+"."+c.Name)] {
+				continue
+			}
+			if raised[strings.ToLower(t.Qualified()+"."+c.Name)] {
 				continue
 			}
 			fs = append(fs, model.Finding{

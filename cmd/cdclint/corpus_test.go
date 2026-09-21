@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/avison9/cdclint/internal/engine"
+	"github.com/avison9/cdclint/internal/source/postgres"
 )
 
 // update rewrites every expected.txt from the current output. Run it after
@@ -26,6 +27,8 @@ var update = flag.Bool("update", false, "rewrite corpus expected.txt files")
 //	connector.json        Debezium source connector
 //	sink/                 ClickHouse DDL, or sink.<dialect>/ for another warehouse
 //	sink-connector.json   optional Kafka Connect sink config
+//	base/                 optional; migrations/ and connector.json as they were
+//	                      before the change, which enables the diff-aware rule
 //	expected.txt          the exact text output
 //	PENDING               optional; names the rule the entry waits for, and skips it
 func TestCorpus(t *testing.T) {
@@ -75,6 +78,9 @@ func TestCorpus(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			if _, err := os.Stat(filepath.Join(name, "base")); err == nil {
+				in.Base = baseFromDir(t, filepath.Join(name, "base"), filepath.Join(name, "connector.json"))
+			}
 			got := Render(engine.Run(in))
 			expectedPath := filepath.Join(name, "expected.txt")
 			if *update {
@@ -95,4 +101,34 @@ func TestCorpus(t *testing.T) {
 	if ran == 0 {
 		t.Fatal("no corpus entries ran")
 	}
+}
+
+func baseFromDir(t *testing.T, dir, headConnector string) *engine.Base {
+	t.Helper()
+	entries, err := os.ReadDir(filepath.Join(dir, "migrations"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var files []postgres.NamedFile
+	for _, e := range entries {
+		b, err := os.ReadFile(filepath.Join(dir, "migrations", e.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		files = append(files, postgres.NamedFile{Path: filepath.Join(dir, "migrations", e.Name()), Text: string(b)})
+	}
+	sort.Slice(files, func(i, j int) bool { return files[i].Path < files[j].Path })
+	conn, err := os.ReadFile(filepath.Join(dir, "connector.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	head, err := os.ReadFile(headConnector)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base, err := BaseFromFiles("base", files, string(conn), string(head))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return base
 }

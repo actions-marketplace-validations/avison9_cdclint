@@ -43,6 +43,18 @@ inputs:
     description: Directory the paths above are relative to.
     required: false
     default: .
+  base:
+    description: >-
+      What the change is judged against, for the schema-before-connector
+      rule: a branch name (main, origin/main), a tag, a commit id, or
+      "none" to skip the rule. On pull_request events it defaults to the
+      pull request's base branch tip. That is the tip, not the merge base:
+      a column added to the base after this branch forked reads as removed
+      here, never as added, so it cannot produce a finding; and a connector
+      edited on the base after the fork reads as changed here, which
+      silences the rule for this run.
+    required: false
+    default: ""
 
 outputs:
   exit-code:
@@ -109,9 +121,35 @@ runs:
         SINKS: ${{ inputs.sink }}
         SINK_CONNECTORS: ${{ inputs.sink-connector }}
         FAIL_ON: ${{ inputs.fail-on }}
+        BASE: ${{ inputs.base }}
+        PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
       run: |
         set -uo pipefail
         args=(--migrations "$MIGRATIONS" --connector "$CONNECTOR" --fail-on "$FAIL_ON")
+        # The diff rule needs the base commit's objects, and
+        # actions/checkout fetches one commit by default. Whatever form the
+        # base was given in (main, origin/main, a tag, a commit id), it is
+        # fetched from origin into FETCH_HEAD and that is what cdclint is
+        # handed, so the same input works with a shallow or a full clone.
+        if [ -z "$BASE" ] && [ -n "$PR_BASE_SHA" ]; then
+          BASE="$PR_BASE_SHA"
+        fi
+        if [ -n "$BASE" ] && [ "$BASE" != "none" ]; then
+          ref="${BASE#origin/}"
+          # --depth=1 only on a clone that is already shallow; on a full
+          # clone it would make the repository shallow as a side effect.
+          depth=""
+          if [ "$(git rev-parse --is-shallow-repository 2>/dev/null)" = "true" ]; then
+            depth="--depth=1"
+          fi
+          if git fetch --no-tags $depth origin "$ref" >/dev/null 2>&1; then
+            args+=(--base FETCH_HEAD)
+          elif git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            args+=(--base "$BASE")
+          else
+            echo "cdclint: could not fetch base $BASE from origin; the schema-before-connector rule is skipped this run" >&2
+          fi
+        fi
         while IFS= read -r line; do
           [ -n "$line" ] && args+=(--sink "$line")
         done <<< "$SINKS"

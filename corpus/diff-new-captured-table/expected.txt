@@ -1,0 +1,7 @@
+info source-column-not-captured diff-new-captured-table/migrations/0033_report_validations.sql:7
+  public.report_validations.assigned_by_user_id exists and is not matched by column.include.list in diff-new-captured-table/connector.json; nothing reads it yet
+  the day a sink asks for it is the day it is found missing
+info source-column-not-captured diff-new-captured-table/migrations/0090_sanctions.sql:7
+  public.sanctions.reason exists and is not matched by column.include.list in diff-new-captured-table/connector.json; nothing reads it yet
+  the day a sink asks for it is the day it is found missing
+0 error(s), 0 warning(s), 2 info

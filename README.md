@@ -3,9 +3,9 @@
 Lint the contract between your database, your Debezium connector and your
 sink, before the deploy that silently drops a column.
 
-**Status: v0.1 in progress.** Seven rules run against a corpus of real
-incidents; three more are next. The first tagged release is imminent; until
-then, install with `go install` from `main`.
+**Status: v0.2.** Eight rules run against a corpus of real incidents; two
+more are next. Released for macOS, Linux and Windows, on Homebrew and on the
+GitHub Marketplace.
 
 ## Why are my columns null?
 
@@ -54,7 +54,7 @@ fails it with the line to add.
 | `captured-column-missing` | the include list names a column the source does not have (warning) | v0.1 |
 | `topic-table-mapping` | a Kafka-engine table reads a topic the connector will not produce | v0.1 |
 | `mv-column-match` | ClickHouse streaming materialized views match by name, refreshable ones by position; the mismatch is loud on 24.8 and silent on 26.8 | v0.1 |
-| `schema-before-connector` | a diff adds a source column the sink reads and does not touch the connector, the trap itself, judged on the pull request's diff | next |
+| `schema-before-connector` | this change adds a column to a captured table and does not touch the connector, the trap itself, judged on the diff (warning: leaving PII off is right, so it asks for the decision) | v0.2 |
 | `replica-identity` | a captured table's replica identity cannot supply what the sink reads | next |
 | `migration-numbering` | duplicate or gapped migration prefixes | next |
 
@@ -113,6 +113,13 @@ cdclint --migrations db/migrations \
         --sink snowflake:warehouse/ddl \
         --sink-connector cdc/snowflake-sink.json
 ```
+
+Add `--base origin/main` (any git ref) and the diff-aware rule judges the
+change itself: a column added to a captured table with the connector left
+untouched is raised while the author is still there. The action does this
+on every pull request by default, against the base branch's tip. Paths on
+the command line are relative to the current directory, in the working
+tree and at the base alike, so it runs from a subdirectory of a monorepo.
 
 Files in, findings out, non-zero exit. No database, no daemon, no credentials.
 Under a second on a laptop. `--fail-on warning` or `info` raises the bar;

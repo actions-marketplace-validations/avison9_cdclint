@@ -19,10 +19,12 @@ import (
 
 	"github.com/avison9/cdclint/internal/capture/debezium"
 	"github.com/avison9/cdclint/internal/engine"
+	"github.com/avison9/cdclint/internal/gitread"
 	"github.com/avison9/cdclint/internal/model"
 	"github.com/avison9/cdclint/internal/sink/clickhouse"
 	"github.com/avison9/cdclint/internal/sink/connect"
 	"github.com/avison9/cdclint/internal/sink/sqlddl"
+	"github.com/avison9/cdclint/internal/source/postgres"
 )
 
 // version is set by the release build with -ldflags "-X main.version=...".
@@ -46,6 +48,7 @@ func run(args []string) int {
 		sinkConns  multi
 		format     = fs.String("format", "text", "output format: text or json")
 		minSev     = fs.String("fail-on", "error", "exit non-zero at this severity or above: error, warning, info")
+		base       = fs.String("base", "", "git ref of the change's base (a branch, a commit, origin/main); enables schema-before-connector, which judges the diff")
 		showVer    = fs.Bool("version", false, "print the version and exit")
 	)
 	fs.Var(&sinks, "sink", "sink DDL directory as [dialect:]DIR; dialect is clickhouse (default), bigquery, snowflake or iceberg; repeatable")
@@ -69,6 +72,14 @@ func run(args []string) int {
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "cdclint:", err)
 		return 2
+	}
+	if *base != "" {
+		b, err := LoadBase(*base, *migrations, *connector)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "cdclint:", err)
+			return 2
+		}
+		in.Base = b
 	}
 	findings := engine.Run(in)
 	switch *format {
@@ -173,4 +184,50 @@ func Load(migrations, connector string, sinks, sinkConns []string) (*engine.Inpu
 		}
 	}
 	return in, nil
+}
+
+// LoadBase reads the migrations as they were at ref, straight from git,
+// and asks git whether the connector changed, for the diff-aware rule.
+// The sink is not needed: the rule asks what the change did to the source
+// and the connector. A connector that did not exist at the base counts as
+// changed, since creating it is the deliberate act the rule looks for.
+func LoadBase(ref, migrations, connector string) (*engine.Base, error) {
+	id, err := gitread.Resolve(ref)
+	if err != nil {
+		return nil, fmt.Errorf("--base: %w", err)
+	}
+	files, err := gitread.Dir(ref, migrations)
+	if err != nil {
+		return nil, fmt.Errorf("--base: %w", err)
+	}
+	var named []postgres.NamedFile
+	for _, f := range files {
+		named = append(named, postgres.NamedFile{Path: f.Path, Text: f.Text})
+	}
+	src, err := postgres.ReadFiles(named)
+	if err != nil {
+		return nil, fmt.Errorf("--base %s: %w", ref, err)
+	}
+	exists, err := gitread.Exists(ref, connector)
+	if err != nil {
+		return nil, fmt.Errorf("--base: %w", err)
+	}
+	changed := true
+	if exists {
+		if changed, err = gitread.Changed(ref, connector); err != nil {
+			return nil, fmt.Errorf("--base: %w", err)
+		}
+	}
+	return &engine.Base{Ref: id, Source: src, ConnectorChanged: changed}, nil
+}
+
+// BaseFromFiles builds the base from migrations already in memory and the
+// connector's text at the base and now; the corpus test feeds it from a
+// base/ directory, so the diff rule is tested without a repository.
+func BaseFromFiles(ref string, migrations []postgres.NamedFile, baseConnector, headConnector string) (*engine.Base, error) {
+	src, err := postgres.ReadFiles(migrations)
+	if err != nil {
+		return nil, err
+	}
+	return &engine.Base{Ref: ref, Source: src, ConnectorChanged: baseConnector != headConnector}, nil
 }
