@@ -71,8 +71,8 @@ func Show(ref, p string) (string, error) {
 	if !ok {
 		return "", ErrNotInRef
 	}
-	spec, _ := spec(ref, p)
-	return run("show", spec)
+	target, _ := spec(ref, p)
+	return run("show", target)
 }
 
 // Dir returns the *.sql files directly under dir at ref, sorted by path:
@@ -94,12 +94,17 @@ func Dir(ref, dir string) ([]File, error) {
 	// a plain concatenation would hand to git as "svc/../db", a path the
 	// tree does not have.
 	//
-	// CAVEAT: git archive honours the export-ignore attribute, so a
-	// migration a .gitattributes marks export-ignore is invisible at the
-	// base. Nobody marks migrations that way, and a file that is in the
-	// working tree but not at the base reads as added, which is the
-	// cautious direction: the rule may raise a column that was there all
-	// along, never miss one that was not.
+	// CAVEAT: git archive honours the export-ignore attribute. The
+	// archive is made from the migrations directory's own tree, so only a
+	// .gitattributes inside that directory applies, not the repository's.
+	// A hidden file is missing from the base, and what that does depends
+	// on the file: a hidden CREATE TABLE leaves the table out of the base
+	// entirely, and every column of it is then skipped by the rule (a new
+	// table is not judged), so the rule goes quiet; a hidden ALTER TABLE
+	// ADD COLUMN makes the column look added by this change when it was
+	// not, a false positive. Neither is caught here; nobody marks
+	// migrations export-ignore, and this note is what to read if someone
+	// does.
 	top, err := run("rev-parse", "--show-toplevel")
 	if err != nil {
 		return nil, err
