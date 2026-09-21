@@ -27,6 +27,10 @@ The rest exercise one path each:
 | `kafka-topic-typo` | a Kafka-engine table naming a topic nothing produces |
 | `include-list-typo` | an include-list pattern that matches no column, and the read it silently breaks |
 | `diff-adds-column-connector-untouched` | the diff rule: `base/` holds the migrations and connector before the change; the change adds a column and leaves the connector alone |
+| `diff-connector-touched` | the diff rule is silent for a table whose capture the same change edited: here the connector gains a column of that table |
+| `diff-connector-touched-other-table` | RefuseRadar #962 and #963 in one range: the connector gains report_validations columns, the migration adds reports columns; the rule judges each table on its own decisions and raises the reports ones |
+| `diff-new-captured-table` | a table new in the change and already on the include list: its columns are not a surprise |
+| `diff-column-already-read` | a column added in the change that a sink already reads: the static error, not the diff warning |
 
 ## Layout of an entry
 

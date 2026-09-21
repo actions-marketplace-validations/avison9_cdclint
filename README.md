@@ -54,7 +54,7 @@ fails it with the line to add.
 | `captured-column-missing` | the include list names a column the source does not have (warning) | v0.1 |
 | `topic-table-mapping` | a Kafka-engine table reads a topic the connector will not produce | v0.1 |
 | `mv-column-match` | ClickHouse streaming materialized views match by name, refreshable ones by position; the mismatch is loud on 24.8 and silent on 26.8 | v0.1 |
-| `schema-before-connector` | this change adds a column to a captured table and does not touch the connector, the trap itself, judged on the diff (warning: leaving PII off is right, so it asks for the decision) | v0.2 |
+| `schema-before-connector` | this change adds a column to a captured table and does not change what the connector captures for that table, the trap itself, judged on the diff (warning: leaving PII off is right, so it asks for the decision) | v0.2 |
 | `replica-identity` | a captured table's replica identity cannot supply what the sink reads | next |
 | `migration-numbering` | duplicate or gapped migration prefixes | next |
 
@@ -115,8 +115,10 @@ cdclint --migrations db/migrations \
 ```
 
 Add `--base origin/main` (any git ref) and the diff-aware rule judges the
-change itself: a column added to a captured table with the connector left
-untouched is raised while the author is still there. The action does this
+change itself: a column added to a captured table, with what the connector
+captures for that table left as it was, is raised while the author is still
+there. Each table is judged on its own: editing the connector for one table
+says nothing about another. The action does this
 on every pull request by default, against the base branch's tip. Paths on
 the command line are relative to the current directory, in the working
 tree and at the base alike, so it runs from a subdirectory of a monorepo.
