@@ -32,6 +32,14 @@ jobs:
       # v1.x.y release. goreleaser does not move tags, so this does, after
       # the release exists and only for a final release (v1.2.3, not
       # v1.2.3-rc1). Pre-1.0 tags move v0 the same way.
+      #
+      # The major tag points at the COMMIT (^{}), not at the release's tag
+      # object. `git tag -f v0 v0.2.1` makes refs/tags/v0 a second name for
+      # the v0.2.1 tag object, and git describe then refuses the exact
+      # match ("tag 'v0' is externally known as 'v0.2.1'") and answers with
+      # a long form goreleaser cannot map back to a tag. v0.2.0 and v0.2.1
+      # both shipped with a changelog from the initial commit because of
+      # that; their notes were corrected by hand.
       - name: Move the major tag
         if: ${{ !contains(github.ref_name, '-') }}
         shell: bash
@@ -39,5 +47,5 @@ jobs:
           major="${GITHUB_REF_NAME%%.*}"
           git config user.name "avison9"
           git config user.email "avisonlivingstone@gmail.com"
-          git tag -f "$major" "$GITHUB_REF_NAME"
+          git tag -f "$major" "${GITHUB_REF_NAME}^{}"
           git push -f origin "refs/tags/$major"
