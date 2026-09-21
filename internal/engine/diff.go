@@ -44,13 +44,19 @@ type Base struct {
 // and the rule said nothing about reports because "the connector
 // changed". An edit for one table says nothing about another, and, one
 // step further, adding one new column to the list says nothing about the
-// second new column in the same migration. So a new column is raised
-// unless the head captures it, or the change explicitly decided against
-// it, which with an exclude list means the change added it there. Two
+// second new column in the same migration. So a new column the head does
+// not capture is raised, including when the change narrowed a pattern
+// that used to capture everything down to a list that omits it. Two
 // things are decided at table level: a table new in the diff, and a
 // table the change put on the connector (or the whole connector, when it
 // is new at the base), were looked at as a whole and their columns are
 // not a surprise.
+//
+// An exclude-list connector never produces this finding. A new column is
+// captured unless a pattern excludes it, and a pattern is a decision:
+// either the change named the column there, or a standing pattern
+// (public.reports\..*_internal) matched the name it was given. The
+// inventory rule still lists the column as information.
 //
 // A column that a sink already reads is not reported here; the static
 // sink-column-not-captured rule reports that as the error it is.
@@ -61,6 +67,9 @@ type Base struct {
 func schemaBeforeConnector(in *Input, reads []Read) ([]model.Finding, map[string]bool) {
 	raised := map[string]bool{}
 	if in.Base == nil || in.Base.Source == nil {
+		return nil, raised
+	}
+	if excludes(in.Contract.ColumnListSetting()) {
 		return nil, raised
 	}
 	base := in.Base.Contract
@@ -94,13 +103,6 @@ func schemaBeforeConnector(in *Input, reads []Read) ([]model.Finding, map[string
 			if bt.Column(c.Name) != nil || in.Contract.CapturesColumn(t.Schema, t.Name, c.Name) {
 				continue
 			}
-			if base.CapturesColumn(t.Schema, t.Name, c.Name) != in.Contract.CapturesColumn(t.Schema, t.Name, c.Name) {
-				// The change decided against this column: an exclude list
-				// that names it. An include list cannot get here, since
-				// the column is new and the base list could not have
-				// captured it unless the head does too.
-				continue
-			}
 			if read[strings.ToLower(t.Qualified()+"."+c.Name)] {
 				continue
 			}
@@ -108,7 +110,7 @@ func schemaBeforeConnector(in *Input, reads []Read) ([]model.Finding, map[string
 			raised[strings.ToLower(q)] = true
 			fs = append(fs, model.Finding{
 				Rule: "schema-before-connector", Severity: model.Warning, Pos: c.Pos,
-				Message: fmt.Sprintf("this change adds %s to a captured table %s (compared with %s)\nthe column will not be in the stream; if a sink is later given it, every row will be the default until a snapshot", q, leftOut(in.Contract.ColumnListSetting(), in.Contract.Pos().File), short(in.Base.Ref)),
+				Message: fmt.Sprintf("this change adds %s to a captured table without adding it to %s in %s (compared with %s)\nthe column will not be in the stream; if a sink is later given it, every row will be the default until a snapshot", q, in.Contract.ColumnListSetting(), in.Contract.Pos().File, short(in.Base.Ref)),
 				Fix:     fmt.Sprintf("%s in the same change, or leave it off on purpose and let this warning stand as the record of that (it blocks only under --fail-on warning)", edit(in.Contract.ColumnListSetting(), q)),
 			})
 		}
@@ -116,14 +118,10 @@ func schemaBeforeConnector(in *Input, reads []Read) ([]model.Finding, map[string
 	return fs, raised
 }
 
-// leftOut words how the connector leaves the new column out, for the list
-// mode: an include list that was not extended, or an exclude list whose
-// existing patterns already swallow the column.
-func leftOut(setting, file string) string {
-	if strings.Contains(setting, "exclude") || strings.Contains(setting, "blacklist") {
-		return fmt.Sprintf("and %s in %s already matches it", setting, file)
-	}
-	return fmt.Sprintf("without adding it to %s in %s", setting, file)
+// excludes reports whether the contract's column list is an exclude list,
+// in either of Debezium's spellings.
+func excludes(setting string) bool {
+	return strings.Contains(setting, "exclude") || strings.Contains(setting, "blacklist")
 }
 
 // short abbreviates a full commit id the way git does; anything else (a

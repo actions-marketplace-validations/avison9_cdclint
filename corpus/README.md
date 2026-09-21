@@ -33,6 +33,8 @@ The rest exercise one path each:
 | `diff-connector-new-at-base` | no `base/connector.json`: the change created the connector, every table was decided at once |
 | `diff-exclude-list-excludes-new-column` | an exclude-list connector that names the new column in the same change: a decision, not a surprise |
 | `diff-exclude-list-captures-by-default` | an exclude-list connector left alone: the new column is captured by default, nothing to say |
+| `diff-exclude-list-pattern-already-matches` | a standing exclude pattern (`.*_m`) swallows the new column by name: the pattern was the decision, no warning |
+| `diff-include-list-narrowed` | the change narrows `public.t\..*` to an explicit list that omits the new column: raised, since enumerating says nothing about what was left out |
 | `diff-new-captured-table` | a table new in the change and already on the include list: its columns are not a surprise |
 | `diff-column-already-read` | a column added in the change that a sink already reads: the static error, not the diff warning |
 
@@ -43,7 +45,7 @@ migrations/           source migrations, applied in name order
 connector.json        the Debezium source connector, full document or bare config
 sink/                 ClickHouse DDL; or sink.<dialect>/ for bigquery, snowflake, iceberg
 sink-connector.json   optional Kafka Connect sink connector config
-base/                 optional; migrations/ and connector.json before the change, for the diff rule; no connector.json there means the change created it
+base/                 optional; migrations/ and connector.json before the change, for the diff rule; no connector.json there means the change created it, and one byte-identical to the head's is the unchanged fast path
 expected.txt          the exact text output; regenerate with go test ./cmd/cdclint -run TestCorpus -update
 PENDING               optional; names the rule the entry waits for, and the test skips it
 ```
