@@ -177,8 +177,8 @@ sinks are packages behind the same two interfaces.
 ## Where it comes from
 
 Extracted from a Postgres to ClickHouse pipeline that had the rule
-"connector before schema" written into its repository and still hit this four
-times in a year. A team that knows the trap hits it four times; a team that
+"connector before schema" written into its repository and still hit this five
+times in six weeks. A team that knows the trap hits it five times; a team that
 does not hits it more and diagnoses it slower.
 
 ## Contributing
