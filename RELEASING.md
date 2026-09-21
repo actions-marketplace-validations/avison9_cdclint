@@ -33,12 +33,16 @@ The `release` workflow then:
 5. creates the GitHub Release with a changelog from the commits since the
    previous tag,
 6. writes `Casks/cdclint.rb` to `avison9/homebrew-tap`,
-7. moves the major tag (`v0`, later `v1`) to this release, which is what
+7. rewrites `Formula/cdclint.rb`'s `url` and `sha256` in the tap to this
+   tag's source tarball (the formula builds from source, the shape
+   homebrew/core wants; the rest of the file is by hand),
+8. moves the major tag (`v0`, later `v1`) to this release, which is what
    `uses: avison9/cdclint@v0` resolves.
 
-Check the run, then check the three places a user meets it: the Release
-page, `brew install avison9/tap/cdclint` on a Mac or Linux box, and a
-workflow using the action.
+Check the run, then check the places a user meets it: the Release page,
+`brew install avison9/tap/cdclint` (the formula, builds from source) and
+`brew install --cask avison9/tap/cdclint` (the binary) on a Mac or Linux
+box, and a workflow using the action.
 
 ## Trying the build without releasing
 

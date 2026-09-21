@@ -21,8 +21,17 @@ ARM).
 brew install avison9/tap/cdclint
 ```
 
-Updates come with `brew upgrade`. The cask clears the quarantine attribute
-after install, so Gatekeeper does not block the first run.
+That builds from the tagged source, the way homebrew/core does: Homebrew
+installs `go` as a build dependency (once, from a bottle), then the build
+takes seconds. For the release binary instead, no Go involved:
+
+```
+brew install --cask avison9/tap/cdclint
+```
+
+Updates come with `brew upgrade` either way. The cask clears the
+quarantine attribute after install, so Gatekeeper does not block the
+first run; a formula build is never quarantined.
 
 **Release archive**, without Homebrew:
 
@@ -44,10 +53,11 @@ xattr -d com.apple.quarantine /usr/local/bin/cdclint
 
 ## Linux
 
-**Homebrew on Linux** works the same as on macOS:
+**Homebrew on Linux** works the same as on macOS, formula or cask:
 
 ```
 brew install avison9/tap/cdclint
+brew install --cask avison9/tap/cdclint
 ```
 
 **Release archive** (any distribution, no package manager needed):
@@ -170,7 +180,7 @@ The GitHub Action does the first check on every run.
 
 | installed with | remove with |
 |---|---|
-| Homebrew | `brew uninstall cdclint` |
+| Homebrew | `brew uninstall cdclint`, or `brew uninstall --cask cdclint` for the cask |
 | release archive | delete the binary from where you put it |
 | Go | `rm "$(go env GOPATH)/bin/cdclint"` |
 | Windows archive | delete `%LOCALAPPDATA%\Programs\cdclint` and the PATH entry |
