@@ -139,6 +139,19 @@ func Run(in *Input) []model.Finding {
 	return fs
 }
 
+// leftOut words why the connector does not carry a name, for the list
+// mode: an include list that does not match it, or an exclude list that
+// does. Until v0.2.2 every message said "is not matched by
+// column.exclude.list" for a column the exclude list matched, the
+// opposite of what happened, and since v0.2.1 that info line is the only
+// message a pattern-excluded column gets.
+func leftOut(setting string) string {
+	if excludes(setting) {
+		return "is matched by " + setting
+	}
+	return "is not matched by " + setting
+}
+
 // edit words the remedy for the contract's list mode: a column is added to
 // an include list and removed from an exclude list.
 func edit(setting, name string) string {
@@ -186,7 +199,7 @@ func sinkTableNotCaptured(in *Input, reads []Read) []model.Finding {
 		seen[r.Sink] = true
 		fs = append(fs, model.Finding{
 			Rule: "sink-table-not-captured", Severity: model.Error, Pos: r.Sink.Pos,
-			Message: fmt.Sprintf("%s %s, but %s.%s is not matched by %s in %s\nnothing will ever arrive on that topic", r.Sink.Name, how(r), r.Table.Schema, r.Table.Name, in.Contract.TableListSetting(), in.Contract.Pos().File),
+			Message: fmt.Sprintf("%s %s, but %s.%s %s in %s\nnothing will ever arrive on that topic", r.Sink.Name, how(r), r.Table.Schema, r.Table.Name, leftOut(in.Contract.TableListSetting()), in.Contract.Pos().File),
 			Fix:     edit(in.Contract.TableListSetting(), r.Table.Schema+"."+r.Table.Name) + " and deploy the connector before the sink schema",
 		})
 	}
@@ -206,7 +219,7 @@ func sinkColumnNotCaptured(in *Input, reads []Read) []model.Finding {
 		q := fmt.Sprintf("%s.%s.%s", r.Table.Schema, r.Table.Name, src.Name)
 		fs = append(fs, model.Finding{
 			Rule: "sink-column-not-captured", Severity: model.Error, Pos: r.Column.Pos,
-			Message: fmt.Sprintf("%s is read by %s (%s) but is not matched by %s in %s\nevery row will carry the column's default, with no error anywhere", q, r.Sink.Name, how(r), in.Contract.ColumnListSetting(), in.Contract.Pos().File),
+			Message: fmt.Sprintf("%s is read by %s (%s) but %s in %s\nevery row will carry the column's default, with no error anywhere", q, r.Sink.Name, how(r), leftOut(in.Contract.ColumnListSetting()), in.Contract.Pos().File),
 			Fix:     edit(in.Contract.ColumnListSetting(), q) + ", deploy the connector, then apply the sink schema; rows already written need a snapshot",
 		})
 	}
@@ -248,7 +261,7 @@ func sourceColumnNotCaptured(in *Input, reads []Read, raised map[string]bool) []
 			}
 			fs = append(fs, model.Finding{
 				Rule: "source-column-not-captured", Severity: model.Info, Pos: c.Pos,
-				Message: fmt.Sprintf("%s.%s exists and is not matched by %s in %s; nothing reads it yet\nthe day a sink asks for it is the day it is found missing", t.Qualified(), c.Name, in.Contract.ColumnListSetting(), in.Contract.Pos().File),
+				Message: fmt.Sprintf("%s.%s exists and %s in %s; nothing reads it yet\nthe day a sink asks for it is the day it is found missing", t.Qualified(), c.Name, leftOut(in.Contract.ColumnListSetting()), in.Contract.Pos().File),
 			})
 		}
 	}
