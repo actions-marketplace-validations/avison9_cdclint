@@ -29,6 +29,10 @@ type Contract struct {
 	prefix         string
 	tableInclude   []*regexp.Regexp
 	tableExclude   []*regexp.Regexp
+	dbInclude      []*regexp.Regexp // MySQL and MariaDB: database.include.list
+	dbExclude      []*regexp.Regexp
+	dbIncludeKey   string
+	dbExcludeKey   string
 	columnInclude  []*regexp.Regexp
 	columnExclude  []*regexp.Regexp
 	columnListKey  string
@@ -127,6 +131,16 @@ func Parse(b []byte) (*Contract, error) {
 	if c.tableListKey == "" {
 		c.tableListKey = "table.include.list"
 	}
+	if c.MySQL() {
+		// MySQL has no schemas: Debezium filters databases first, and a
+		// table must pass both lists.
+		if c.dbInclude, c.dbIncludeKey, err = list(cfg, "database.include.list", "database.whitelist"); err != nil {
+			return nil, err
+		}
+		if c.dbExclude, c.dbExcludeKey, err = list(cfg, "database.exclude.list", "database.blacklist"); err != nil {
+			return nil, err
+		}
+	}
 	c.routers = routers(cfg)
 	c.shape = smt.Apply(cfg, "", smt.Start(cfg))
 	return c, nil
@@ -208,7 +222,69 @@ func (c *Contract) ValueShape() model.Shape {
 	return s
 }
 
+// MySQL reports whether this is Debezium's MySQL or MariaDB connector, whose
+// tables are databaseName.tableName and whose migrations are MySQL's.
+func (c *Contract) MySQL() bool {
+	lc := strings.ToLower(c.Class)
+	return strings.Contains(lc, "mysql") || strings.Contains(lc, "mariadb")
+}
+
+// DefaultDatabase is the database unqualified MySQL migrations run in, when
+// the connector names exactly one: a database.include.list holding a single
+// plain name, or failing that a table.include.list whose entries all start
+// with the same plain database name. It is "" when the connector does not
+// say, and the reader then needs a USE statement.
+func (c *Contract) DefaultDatabase() string {
+	if dbs := strings.Split(first(c.Config, "database.include.list", "database.whitelist"), ","); len(dbs) == 1 {
+		if name, ok := literal(dbs[0]); ok {
+			return name
+		}
+	}
+	common := ""
+	for _, p := range strings.Split(first(c.Config, "table.include.list", "table.whitelist"), ",") {
+		p = strings.TrimSpace(p)
+		dot := strings.Index(p, `\.`)
+		if dot < 0 {
+			dot = strings.Index(p, ".")
+		}
+		if dot <= 0 {
+			return ""
+		}
+		name, ok := literal(p[:dot])
+		if !ok || common != "" && !strings.EqualFold(common, name) {
+			return ""
+		}
+		common = name
+	}
+	return common
+}
+
+// literal reports whether a list entry is a plain name rather than a pattern.
+func literal(p string) (string, bool) {
+	p = strings.TrimSpace(p)
+	if p == "" || strings.ContainsAny(p, `.*+?()[]{}|^$\`) {
+		return "", false
+	}
+	return p, true
+}
+
+// TableBlock names the list that keeps schema.table out of the stream and
+// the entry that would let it in: the database for a MySQL database list,
+// the qualified table otherwise.
+func (c *Contract) TableBlock(schema, table string) (setting, entry string) {
+	if len(c.dbInclude) > 0 && !anyMatch(c.dbInclude, schema) {
+		return c.dbIncludeKey, schema
+	}
+	if len(c.dbExclude) > 0 && anyMatch(c.dbExclude, schema) {
+		return c.dbExcludeKey, schema
+	}
+	return c.tableListKey, schema + "." + table
+}
+
 func (c *Contract) CapturesTable(schema, table string) bool {
+	if len(c.dbInclude) > 0 && !anyMatch(c.dbInclude, schema) || len(c.dbExclude) > 0 && anyMatch(c.dbExclude, schema) {
+		return false
+	}
 	q := schema + "." + table
 	if len(c.tableInclude) > 0 {
 		return anyMatch(c.tableInclude, q)

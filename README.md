@@ -12,7 +12,7 @@ GitHub Marketplace.
 A change-data-capture pipeline has three schemas that must agree and nothing
 that makes them agree:
 
-1. **The source schema.** Postgres tables, evolved by migrations, changed
+1. **The source schema.** Postgres or MySQL tables, evolved by migrations, changed
    weekly by the application team.
 2. **The capture contract.** The Debezium connector JSON: `table.include.list`,
    `column.include.list`, replica identity, topic naming. Written once by
@@ -51,7 +51,7 @@ your repository, and cdclint reads it:
 | what you see | what is usually wrong | rule |
 |---|---|---|
 | A column is `0`, `''`, `NULL` or `1970-01-01` on every row in ClickHouse, BigQuery, Snowflake or Iceberg, with nothing in the logs | the column is not on the connector's `column.include.list` (or is on its exclude list), so Debezium drops it before Kafka | `sink-column-not-captured` |
-| A column added in Postgres never shows up downstream | the migration added it and nobody added it to the include list | `schema-before-connector` (with `--base`), `sink-column-not-captured` |
+| A column added in Postgres or MySQL never shows up downstream | the migration added it and nobody added it to the include list | `schema-before-connector` (with `--base`), `sink-column-not-captured` |
 | Listing the columns of one table made another table's columns disappear | `column.include.list` is one list for every captured table | `sink-column-not-captured` |
 | "`table.include.list` not working", or the connector is `RUNNING` and no topic appears | the entry has no schema (`orders` for `public.orders`), or is a glob (`public.bg_*`) where Debezium expects a regex (`public\.bg_.*`); Debezium matches each entry against the whole `schema.table` name, never a substring | `captured-table-missing` names the entry and the fix; `sink-table-not-captured` when a sink reads the table |
 | A Kafka-engine table or sink receives nothing, or the wrong table fills | the topic it reads is not the one the connector produces (prefix, schema, `RegexRouter`) | `topic-table-mapping` |
@@ -60,7 +60,7 @@ your repository, and cdclint reads it:
 | The Kafka Connect sink writes a row of `0` and empty strings for every change, and no error ("sink replicates zero values or nulls") | a `Flatten` transform keeps Debezium's envelope and names every field `after.<column>`, while the sink table names its columns as Postgres does; sinks match fields to columns by name | `sink-column-flattened` |
 | A ClickHouse materialized view writes defaults | a refreshable view's `SELECT` order differs from the target's (it matches by position), or a streaming view's names differ (it matches by name) | `mv-column-match` |
 
-It reads files only: Postgres sources today, no type checks, no connection to
+It reads files only: Postgres and MySQL (or MariaDB) sources, no type checks, no connection to
 anything running.
 
 ## What it checks
@@ -202,6 +202,23 @@ line; `fail-on`, `version` and `working-directory` are the other inputs. The
 action downloads the release binary for the runner and verifies its
 checksum before running it.
 
+## Sources
+
+The migrations are read in filename order, and the connector's class picks
+the dialect: `MySqlConnector` and `MariaDbConnector` read MySQL, every other
+Debezium source reads Postgres. `--migrations mysql:DIR` or `postgres:DIR`
+says it outright.
+
+MySQL has no schemas: Debezium names a table `database.table`, so cdclint
+needs the database the migrations run in. It takes it from a `USE db;` in the
+migrations, or from the connector when `database.include.list` names one
+database (or every `table.include.list` entry starts with the same one), and
+stops with that advice when neither says. `database.include.list` and
+`database.exclude.list` are applied before the table lists, as Debezium does,
+and a finding names whichever list keeps a table out. MySQL's re-runnable
+migrations wrap `ALTER TABLE` in a string run through `PREPARE`, because MySQL
+has no `ADD COLUMN IF NOT EXISTS`; cdclint reads the DDL in those strings too.
+
 ## Sinks, out of the box in v1
 
 | sink | how tables are found | how a table maps to a topic |
@@ -214,7 +231,7 @@ checksum before running it.
 
 Without a sink connector config, a sink table maps to the source table of the
 same name, and the finding says so. Debezium's `RegexRouter` transform is
-applied when computing topic names. Other sources (MySQL, SQL Server) and
+applied when computing topic names. Other sources (SQL Server, Oracle) and
 sinks are packages behind the same two interfaces.
 
 Transforms on either connector decide what the sink receives, and cdclint
@@ -232,7 +249,7 @@ then reads the sink's column names as the row's, as it always has.
 
 - **One job.** Lint the contract. Not a CDC platform, not a migration runner,
   not monitoring.
-- **Pluggable ends.** Postgres and Debezium as the source and capture
+- **Pluggable ends.** Postgres or MySQL, and Debezium, as the source and capture
   readers; ClickHouse, BigQuery, Snowflake and Iceberg as sink readers, each
   behind a small interface so the next one is a package, not a rewrite.
 - **The corpus is the spec.** [`corpus/`](corpus/) holds one directory per

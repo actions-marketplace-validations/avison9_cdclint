@@ -1,0 +1,8 @@
+warning captured-column-missing mysql-change-column/connector.json
+  shop\.orders\.amount in column.include.list matches no column in the source schema
+  fix: remove it, or check the spelling against the migrations
+error sink-column-not-captured mysql-change-column/sink/0001_orders.sql:4
+  shop.orders.total_amount is read by kafka_orders (reads topic shopdb.shop.orders) but is not matched by column.include.list in mysql-change-column/connector.json
+  every row will carry the column's default, with no error anywhere
+  fix: add shop.orders.total_amount to column.include.list, deploy the connector, then apply the sink schema; rows already written need a snapshot
+1 error(s), 1 warning(s), 0 info

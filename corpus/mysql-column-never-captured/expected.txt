@@ -1,0 +1,5 @@
+error sink-column-not-captured mysql-column-never-captured/sink/0001_orders.sql:6
+  shop.orders.currency is read by kafka_orders (reads topic shopdb.shop.orders) but is not matched by column.include.list in mysql-column-never-captured/connector.json
+  every row will carry the column's default, with no error anywhere
+  fix: add shop.orders.currency to column.include.list, deploy the connector, then apply the sink schema; rows already written need a snapshot
+1 error(s), 0 warning(s), 0 info

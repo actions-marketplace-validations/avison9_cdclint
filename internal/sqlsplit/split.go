@@ -17,6 +17,19 @@ type Statement struct {
 // Split returns the statements in src. Comments are removed from the text so
 // readers never see them, but the line count they occupied is preserved.
 func Split(src string) []Statement {
+	return split(src, false)
+}
+
+// SplitMySQL is Split for MySQL and MariaDB: # starts a line comment, a
+// backslash escapes the next character inside '...' and "...", there is no
+// dollar quoting ($ is an identifier character), and a DELIMITER line at
+// the start of a line changes what ends a statement, the way the mysql
+// client reads a file of stored routines.
+func SplitMySQL(src string) []Statement {
+	return split(src, true)
+}
+
+func split(src string, mysql bool) []Statement {
 	var (
 		out     []Statement
 		buf     strings.Builder
@@ -25,6 +38,8 @@ func Split(src string) []Statement {
 		i       = 0
 		n       = len(src)
 		dollarT string // the $tag$ that opened a dollar quote, "" when not inside one
+		delim   = ";"
+		bol     = true // at the start of a line, ignoring leading blanks
 	)
 	flush := func() {
 		text := strings.TrimSpace(buf.String())
@@ -42,6 +57,21 @@ func Split(src string) []Statement {
 	}
 	for i < n {
 		c := src[i]
+		if mysql && bol && c != ' ' && c != '\t' {
+			bol = false
+			if len(src)-i > 10 && strings.EqualFold(src[i:i+9], "DELIMITER") && (src[i+9] == ' ' || src[i+9] == '\t') {
+				end := strings.IndexByte(src[i:], '\n')
+				if end < 0 {
+					end = n - i
+				}
+				if d := strings.TrimSpace(src[i+10 : i+end]); d != "" {
+					flush()
+					delim = d
+				}
+				i += end
+				continue
+			}
+		}
 		switch {
 		case dollarT != "":
 			// Inside $tag$ ... $tag$: copy through until the closing tag.
@@ -56,6 +86,10 @@ func Split(src string) []Statement {
 			}
 			emit(string(c))
 			i++
+		case mysql && c == '#':
+			for i < n && src[i] != '\n' {
+				i++
+			}
 		case c == '-' && i+1 < n && src[i+1] == '-':
 			// Line comment: drop to end of line, keep the newline.
 			for i < n && src[i] != '\n' {
@@ -80,6 +114,13 @@ func Split(src string) []Statement {
 				if src[j] == '\n' {
 					line++
 				}
+				if mysql && q != '`' && src[j] == '\\' && j+1 < n {
+					if src[j+1] == '\n' {
+						line++
+					}
+					j += 2
+					continue
+				}
 				if src[j] == q {
 					if j+1 < n && src[j+1] == q {
 						j += 2
@@ -94,7 +135,7 @@ func Split(src string) []Statement {
 			}
 			emit(src[i : j+1])
 			i = j + 1
-		case c == '$':
+		case !mysql && c == '$':
 			// $$ or $tag$ opens a dollar quote; a lone $ is just a character.
 			if tag, ok := dollarTag(src[i:]); ok {
 				dollarT = tag
@@ -104,12 +145,13 @@ func Split(src string) []Statement {
 			}
 			emit("$")
 			i++
-		case c == ';':
+		case strings.HasPrefix(src[i:], delim):
 			flush()
-			i++
+			i += len(delim)
 		default:
 			if c == '\n' {
 				line++
+				bol = true
 			}
 			emit(string(c))
 			i++
