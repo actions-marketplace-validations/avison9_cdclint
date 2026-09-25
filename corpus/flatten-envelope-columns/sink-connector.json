@@ -1,0 +1,10 @@
+{
+  "connector.class": "com.clickhouse.kafka.connect.ClickHouseSinkConnector",
+  "database": "default",
+  "exactlyOnce": "false",
+  "schemas.enable": "false",
+  "topics": "uk_price_paid_changes",
+  "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+  "value.converter.schemas.enable": "false",
+  "key.converter": "org.apache.kafka.connect.storage.StringConverter"
+}

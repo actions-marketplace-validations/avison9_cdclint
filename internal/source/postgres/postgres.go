@@ -10,13 +10,12 @@ package postgres
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
-	"sort"
 	"strings"
 
 	"github.com/avison9/cdclint/internal/ddl"
+	"github.com/avison9/cdclint/internal/migrate"
 	"github.com/avison9/cdclint/internal/model"
+	"github.com/avison9/cdclint/internal/source"
 	"github.com/avison9/cdclint/internal/sqlsplit"
 )
 
@@ -26,39 +25,25 @@ const DefaultSchema = "public"
 
 // ReadDir applies every *.sql file in dir, sorted by name.
 func ReadDir(dir string) (*model.Source, []string, error) {
-	entries, err := os.ReadDir(dir)
+	named, files, err := source.ReadDir(dir)
 	if err != nil {
 		return nil, nil, err
-	}
-	var files []string
-	for _, e := range entries {
-		if !e.IsDir() && strings.HasSuffix(strings.ToLower(e.Name()), ".sql") {
-			files = append(files, filepath.Join(dir, e.Name()))
-		}
-	}
-	sort.Strings(files)
-	var named []NamedFile
-	for _, f := range files {
-		b, err := os.ReadFile(f)
-		if err != nil {
-			return nil, nil, err
-		}
-		named = append(named, NamedFile{Path: f, Text: string(b)})
 	}
 	src, err := ReadFiles(named)
 	return src, files, err
 }
 
 // NamedFile is one migration's content, named by the path findings show.
-type NamedFile struct {
-	Path string
-	Text string
-}
+type NamedFile = source.NamedFile
 
 // ReadFiles applies migrations already in memory, in the order given.
+// Down migrations are skipped: a forward migrate never runs them.
 func ReadFiles(files []NamedFile) (*model.Source, error) {
 	src := &model.Source{}
 	for _, f := range files {
+		if migrate.Down(f.Path) {
+			continue
+		}
 		if err := Apply(src, f.Path, f.Text); err != nil {
 			return nil, fmt.Errorf("%s: %w", f.Path, err)
 		}
@@ -66,9 +51,10 @@ func ReadFiles(files []NamedFile) (*model.Source, error) {
 	return src, nil
 }
 
-// Apply runs one file's statements against src.
+// Apply runs one file's statements against src, leaving out a down section
+// (goose, sql-migrate, dbmate) the way a forward migrate does.
 func Apply(src *model.Source, file, text string) error {
-	for _, st := range sqlsplit.Split(text) {
+	for _, st := range sqlsplit.Split(migrate.Up(text)) {
 		pos := model.Pos{File: file, Line: st.Line}
 		w := ddl.Words(st.Text)
 		switch {
@@ -109,7 +95,12 @@ func createTable(src *model.Source, text string, pos model.Pos) {
 		name = name[:p]
 	}
 	schema, table := splitQualified(name)
-	body, rest, ok := ddl.Body(text[strings.Index(text, w[i]):])
+	// The column list is the first parenthesis after TABLE. Searching for
+	// the name's word instead panicked when the name was glued to a paren
+	// that opens a multi-line list ("reactions(\n  userid ..."): the word
+	// splitter folds that list's whitespace, so the word is not in the text
+	// and the index is -1. Found on Mattermost's migrations.
+	body, rest, ok := ddl.Body(text[strings.Index(strings.ToUpper(text), "TABLE")+len("TABLE"):])
 	if !ok {
 		return
 	}

@@ -1,0 +1,9 @@
+{
+  "name": "shop-source",
+  "config": {
+    "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+    "plugin.name": "pgoutput",
+    "topic.prefix": "shop",
+    "table.include.list": "public.customers,public.oders"
+  }
+}

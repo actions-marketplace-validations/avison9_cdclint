@@ -1,0 +1,5 @@
+error sink-column-flattened flatten-bare-columns/sink/0001_testradiomeas.sql:4
+  default.testradiomeas (is fed topic testradiomeas by flatten-bare-columns/sink-connector.json) reads measDate, measLongitude, measLatitude, measNetNoCoverage, measNetType by their names in public.testradiomeas, but transforms.flatten in flatten-bare-columns/connector.json flattens each change event, so every one arrives as after.<column>
+  every row will carry the columns' defaults, with no error anywhere
+  fix: rename them after.measDate and so on, or unwrap the event with io.debezium.transforms.ExtractNewRecordState in place of transforms.flatten
+1 error(s), 0 warning(s), 0 info

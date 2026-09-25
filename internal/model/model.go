@@ -197,3 +197,30 @@ func (f Finding) Format() string {
 	}
 	return b.String()
 }
+
+// ShapeKind says what a change event's value looks like when a sink reads it.
+type ShapeKind int
+
+const (
+	// ShapeUnknown: a transform cdclint does not model changed the value, or
+	// the connector is not one whose output it knows. Sink columns are taken
+	// as the row's column names, as they always were.
+	ShapeUnknown ShapeKind = iota
+	// ShapeEnvelope: Debezium's change event, before/after/source/op/ts_ms.
+	ShapeEnvelope
+	// ShapeRow: the row itself, unwrapped from the envelope.
+	ShapeRow
+	// ShapeFlattened: the envelope flattened into after<d>column,
+	// before<d>column, source<d>field, op, ts_ms.
+	ShapeFlattened
+)
+
+// Shape is the value a sink receives after every transform on the way.
+type Shape struct {
+	Kind ShapeKind
+	// Delimiter joins envelope and column names when Kind is ShapeFlattened.
+	Delimiter string
+	// Transform and File name the flatten transform, for findings.
+	Transform string
+	File      string
+}

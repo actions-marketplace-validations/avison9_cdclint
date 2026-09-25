@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/avison9/cdclint/internal/model"
+	"github.com/avison9/cdclint/internal/smt"
 )
 
 // Kind is which sink connector family a config belongs to.
@@ -37,11 +38,18 @@ type Mapper struct {
 	setting     string            // which setting held the map
 	routes      []route           // Iceberg: table -> route regex
 	single      string            // Iceberg: the one table when iceberg.tables lists one
+	cfg         map[string]string // the whole config, for its transforms
 }
 
 type route struct {
 	table string
 	re    *regexp.Regexp
+}
+
+// Reshape applies this sink connector's transforms to the value the source
+// connector produced; a sink connector can unwrap or flatten on its side.
+func (m *Mapper) Reshape(in model.Shape) model.Shape {
+	return smt.Apply(m.cfg, m.Pos.File, in)
 }
 
 // ReadFile parses one sink connector JSON file.
@@ -72,7 +80,7 @@ func Parse(b []byte) (*Mapper, error) {
 	for k, v := range src {
 		cfg[k] = fmt.Sprint(v)
 	}
-	m := &Mapper{Class: cfg["connector.class"], explicit: map[string]string{}}
+	m := &Mapper{Class: cfg["connector.class"], explicit: map[string]string{}, cfg: cfg}
 	lc := strings.ToLower(m.Class)
 	switch {
 	case strings.Contains(lc, "snowflake"):

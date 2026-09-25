@@ -1,0 +1,11 @@
+{
+  "name": "shop-mysql-source",
+  "config": {
+    "connector.class": "io.debezium.connector.mysql.MySqlConnector",
+    "topic.prefix": "shopdb",
+    "database.include.list": "shop",
+    "column.include.list": "shop\\.orders\\.(id|total)",
+    "transforms": "unwrap",
+    "transforms.unwrap.type": "io.debezium.transforms.ExtractNewRecordState"
+  }
+}
