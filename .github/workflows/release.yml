@@ -28,6 +28,30 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+      # Formula/cdclint.rb in the tap builds from the tagged source, the
+      # way homebrew/core would; goreleaser writes only the cask, so this
+      # rewrites the formula's url and sha256 to this tag. The hash is of
+      # GitHub's source tarball for the tag, which GitHub keeps stable for
+      # tags. Only for a final release, like the major tag below.
+      - name: Bump the tap formula
+        if: ${{ !contains(github.ref_name, '-') }}
+        shell: bash
+        env:
+          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag="$GITHUB_REF_NAME"
+          url="https://github.com/avison9/cdclint/archive/refs/tags/${tag}.tar.gz"
+          sha="$(curl -fsSL "$url" | sha256sum | awk '{print $1}')"
+          git clone -q --depth=1 "https://x-access-token:${TAP_TOKEN}@github.com/avison9/homebrew-tap.git" "$RUNNER_TEMP/tap"
+          cd "$RUNNER_TEMP/tap"
+          sed -i -E "s|^(  url \").*(\")$|\1${url}\2|; s|^(  sha256 \").*(\")$|\1${sha}\2|" Formula/cdclint.rb
+          grep -q "$sha" Formula/cdclint.rb
+          git config user.name "avison9"
+          git config user.email "avisonlivingstone@gmail.com"
+          git commit -qam "cdclint ${tag} formula"
+          git push -q origin HEAD:main
+          echo "formula: ${url} ${sha}"
       # `uses: avison9/cdclint@v1` needs a v1 tag that follows the newest
       # v1.x.y release. goreleaser does not move tags, so this does, after
       # the release exists and only for a final release (v1.2.3, not
