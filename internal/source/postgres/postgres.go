@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	"github.com/avison9/cdclint/internal/ddl"
+	"github.com/avison9/cdclint/internal/migrate"
 	"github.com/avison9/cdclint/internal/model"
 	"github.com/avison9/cdclint/internal/sqlsplit"
 )
@@ -56,9 +57,13 @@ type NamedFile struct {
 }
 
 // ReadFiles applies migrations already in memory, in the order given.
+// Down migrations are skipped: a forward migrate never runs them.
 func ReadFiles(files []NamedFile) (*model.Source, error) {
 	src := &model.Source{}
 	for _, f := range files {
+		if migrate.Down(f.Path) {
+			continue
+		}
 		if err := Apply(src, f.Path, f.Text); err != nil {
 			return nil, fmt.Errorf("%s: %w", f.Path, err)
 		}
@@ -66,9 +71,10 @@ func ReadFiles(files []NamedFile) (*model.Source, error) {
 	return src, nil
 }
 
-// Apply runs one file's statements against src.
+// Apply runs one file's statements against src, leaving out a down section
+// (goose, sql-migrate, dbmate) the way a forward migrate does.
 func Apply(src *model.Source, file, text string) error {
-	for _, st := range sqlsplit.Split(text) {
+	for _, st := range sqlsplit.Split(migrate.Up(text)) {
 		pos := model.Pos{File: file, Line: st.Line}
 		w := ddl.Words(st.Text)
 		switch {

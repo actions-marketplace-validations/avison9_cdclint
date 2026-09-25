@@ -26,6 +26,8 @@ The rest exercise one path each:
 | `clickhouse-kafka-connect` | a ClickHouse MergeTree table fed by the Kafka Connect sink rather than a Kafka-engine table |
 | `kafka-topic-typo` | a Kafka-engine table naming a topic nothing produces |
 | `include-list-typo` | an include-list pattern that matches no column, and the read it silently breaks |
+| `golang-migrate-down-files` | Mattermost v10.11.0's `000092_add_createat_to_teammembers.down.sql` drops a column from the wrong table; read in name order it ran just before its up file and deleted `reactions.createat`. Down files are skipped |
+| `goose-down-section` | a goose file's down section follows its up section; applied whole, every table was created and dropped again. Down sections are skipped |
 | `diff-adds-column-connector-untouched` | the diff rule: `base/` holds the migrations and connector before the change; the change adds a column and leaves the connector alone |
 | `diff-connector-captures-one-of-two` | #963 with a hurried fix: two of three new columns go on the include list in the same change; the third is raised, since adding two says nothing about it |
 | `diff-connector-touched-other-table` | RefuseRadar #962 and #963 in one range: the connector gains report_validations columns, the migration adds reports columns; the reports ones are raised |
