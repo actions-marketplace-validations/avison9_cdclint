@@ -33,6 +33,7 @@ type Contract struct {
 	columnListKey  string
 	tableListKey   string
 	columnPatterns []string
+	tablePatterns  []string
 	routers        []router
 	Config         map[string]string
 	Class          string
@@ -94,6 +95,11 @@ func Parse(b []byte) (*Contract, error) {
 	// everything.
 	if c.tableInclude, c.tableListKey, err = list(cfg, "table.include.list", "table.whitelist"); err != nil {
 		return nil, err
+	}
+	for _, p := range strings.Split(first(cfg, "table.include.list", "table.whitelist"), ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			c.tablePatterns = append(c.tablePatterns, p)
+		}
 	}
 	if c.tableExclude, _, err = list(cfg, "table.exclude.list", "table.blacklist"); err != nil {
 		return nil, err
@@ -232,4 +238,9 @@ func (c *Contract) ColumnListSetting() string { return c.columnListKey }
 // captured-column-missing rule. Exclude lists are not returned: a pattern
 // there that matches nothing excludes nothing, which is harmless.
 func (c *Contract) ColumnPatterns() []string { return c.columnPatterns }
+
+// TablePatterns returns the table include-list patterns as written, for the
+// captured-table-missing rule. Exclude lists are left out for the same
+// reason as columns.
+func (c *Contract) TablePatterns() []string  { return c.tablePatterns }
 func (c *Contract) TableListSetting() string { return c.tableListKey }

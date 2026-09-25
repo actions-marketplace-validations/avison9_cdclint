@@ -6,6 +6,8 @@ package engine
 
 import (
 	"fmt"
+	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/avison9/cdclint/internal/model"
@@ -18,7 +20,7 @@ type Input struct {
 	Source   *model.Source
 	Contract model.Contract
 	// Patterns, when the contract can list them, lets captured-column-missing
-	// check each include pattern against the schema.
+	// and captured-table-missing check each include pattern against the schema.
 	Patterns PatternLister
 	Sinks    []*model.Sink
 	Views    []clickhouse.View
@@ -27,10 +29,11 @@ type Input struct {
 	Base *Base
 }
 
-// PatternLister is implemented by contracts whose column list is a set of
-// patterns that can be checked one by one.
+// PatternLister is implemented by contracts whose column and table lists are
+// sets of patterns that can be checked one by one.
 type PatternLister interface {
 	ColumnPatterns() []string
+	TablePatterns() []string
 }
 
 // Read is one sink column resolved to the source column it expects.
@@ -134,6 +137,7 @@ func Run(in *Input) []model.Finding {
 	fs = append(fs, diff...)
 	fs = append(fs, sourceColumnNotCaptured(in, reads, raised)...)
 	fs = append(fs, capturedColumnMissing(in)...)
+	fs = append(fs, capturedTableMissing(in)...)
 	fs = append(fs, mvColumnMatch(in)...)
 	model.Sort(fs)
 	return fs
@@ -289,6 +293,92 @@ func capturedColumnMissing(in *Input) []model.Finding {
 		}
 	}
 	return fs
+}
+
+// capturedTableMissing checks each table include-list entry against the
+// schema. Debezium logs a warning when an entry matches no table and keeps
+// running; debezium/dbz#872 asks it to fail instead, and a maintainer
+// answered that a table may be created later. That is why this is a warning:
+// when a sink reads the table, sink-table-not-captured raises the error.
+//
+// Two shapes get a pointed fix because they are how people get it wrong in
+// practice (Stack Overflow 74103659 and 51345636): an entry without its schema,
+// and a shell glob. Both follow from Debezium's documented matching: each
+// entry is a regular expression matched against the whole schema.table name,
+// never a substring.
+func capturedTableMissing(in *Input) []model.Finding {
+	if in.Patterns == nil {
+		return nil
+	}
+	var fs []model.Finding
+	for _, p := range in.Patterns.TablePatterns() {
+		for _, name := range expand(p) {
+			m, err := compileAnchored(name)
+			if err != nil || tablesMatching(in, func(t *model.Table) bool { return m(t.Qualified()) }) != nil {
+				continue
+			}
+			message := fmt.Sprintf("%s in %s matches no table in the source schema", name, in.Contract.TableListSetting())
+			fix := "remove it, or check the spelling against the migrations"
+			if bare := tablesMatching(in, func(t *model.Table) bool { return m(t.Name) }); bare != nil {
+				message += "\nDebezium matches each entry against the whole schema.table name"
+				var qualified []string
+				for _, t := range bare {
+					qualified = append(qualified, regexp.QuoteMeta(t.Qualified()))
+				}
+				fix = "write " + strings.Join(qualified, " or ") + ", or remove it"
+			} else if re, caught := globReading(in, name); caught != nil {
+				message += "\nDebezium reads each entry as a regular expression, where * repeats the character before it"
+				var names []string
+				for _, t := range caught {
+					names = append(names, t.Qualified())
+				}
+				fix = "write " + re + " to capture " + joinAnd(names) + ", or remove it"
+			}
+			fs = append(fs, model.Finding{
+				Rule: "captured-table-missing", Severity: model.Warning, Pos: in.Contract.Pos(),
+				Message: message,
+				Fix:     fix,
+			})
+		}
+	}
+	return fs
+}
+
+// tablesMatching returns the source tables for which match is true, in
+// qualified-name order, or nil when there are none.
+func tablesMatching(in *Input, match func(*model.Table) bool) []*model.Table {
+	var out []*model.Table
+	for _, t := range in.Source.Tables {
+		if match(t) {
+			out = append(out, t)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Qualified() < out[j].Qualified() })
+	return out
+}
+
+// globReading reads an entry the way its author most likely meant it, as a
+// shell glob where * is any run of characters, and returns the regular
+// expression that says so and the tables it would capture. An entry that
+// already contains .* was written as a regular expression and is left alone.
+func globReading(in *Input, entry string) (string, []*model.Table) {
+	if !strings.Contains(entry, "*") || strings.Contains(entry, ".*") {
+		return "", nil
+	}
+	re := strings.ReplaceAll(regexp.QuoteMeta(entry), `\*`, ".*")
+	m, err := compileAnchored(re)
+	if err != nil {
+		return "", nil
+	}
+	return re, tablesMatching(in, func(t *model.Table) bool { return m(t.Qualified()) })
+}
+
+// joinAnd lists names as "a", "a and b" or "a, b and c".
+func joinAnd(names []string) string {
+	if len(names) < 2 {
+		return strings.Join(names, "")
+	}
+	return strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]
 }
 
 // expand turns the common `schema.table\.(a|b|c)` shape into one pattern
