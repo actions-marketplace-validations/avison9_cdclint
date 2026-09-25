@@ -1,0 +1,2 @@
+DROP TABLE IF EXISTS teammembers;
+DROP TABLE IF EXISTS reactions;

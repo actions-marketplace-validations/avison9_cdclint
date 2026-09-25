@@ -157,6 +157,12 @@ cdclint --migrations db/migrations \
         --sink-connector cdc/snowflake-sink.json
 ```
 
+The migrations are applied in filename order, the way every migration runner
+does, and the down half of a migration is left out, since a forward migrate
+never runs it: golang-migrate's `*.down.sql` files, and the down section of a
+goose (`-- +goose Down`), sql-migrate (`-- +migrate Down`) or dbmate
+(`-- migrate:down`) file.
+
 Add `--base origin/main` (any git ref) and the diff-aware rule judges the
 change itself: a column added to a captured table and left off the include
 list is raised while the author is still there. Each new column is judged on
