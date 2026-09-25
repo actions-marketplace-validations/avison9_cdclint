@@ -67,3 +67,19 @@ func formatSlice(s []string) string {
 	}
 	return out + "]"
 }
+
+func TestANameGluedToAMultiLineColumnListDoesNotPanic(t *testing.T) {
+	// Mattermost 000016_create_reactions.up.sql, as written.
+	src := &model.Source{}
+	text := "CREATE TABLE IF NOT EXISTS reactions(\n    userid VARCHAR(26) NOT NULL,\n    postid VARCHAR(26) NOT NULL\n);"
+	if err := Apply(src, "000016_create_reactions.up.sql", text); err != nil {
+		t.Fatal(err)
+	}
+	r := src.Table("public", "reactions")
+	if r == nil || len(r.Columns) != 2 || r.Columns[0].Name != "userid" || r.Columns[1].Name != "postid" {
+		t.Fatalf("public.reactions = %+v", r)
+	}
+	if r.Columns[1].Pos.Line != 3 {
+		t.Errorf("postid line = %d, want 3", r.Columns[1].Pos.Line)
+	}
+}

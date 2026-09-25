@@ -109,7 +109,12 @@ func createTable(src *model.Source, text string, pos model.Pos) {
 		name = name[:p]
 	}
 	schema, table := splitQualified(name)
-	body, rest, ok := ddl.Body(text[strings.Index(text, w[i]):])
+	// The column list is the first parenthesis after TABLE. Searching for
+	// the name's word instead panicked when the name was glued to a paren
+	// that opens a multi-line list ("reactions(\n  userid ..."): the word
+	// splitter folds that list's whitespace, so the word is not in the text
+	// and the index is -1. Found on Mattermost's migrations.
+	body, rest, ok := ddl.Body(text[strings.Index(strings.ToUpper(text), "TABLE")+len("TABLE"):])
 	if !ok {
 		return
 	}
