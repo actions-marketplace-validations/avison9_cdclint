@@ -57,6 +57,7 @@ your repository, and cdclint reads it:
 | A Kafka-engine table or sink receives nothing, or the wrong table fills | the topic it reads is not the one the connector produces (prefix, schema, `RegexRouter`) | `topic-table-mapping` |
 | A typo in the include list, and a column quietly missing | the pattern matches no column in the source | `captured-column-missing` |
 | A typo in `table.include.list`, and a topic that never appears | the entry matches no table in the source | `captured-table-missing` |
+| The Kafka Connect sink writes a row of `0` and empty strings for every change, and no error ("sink replicates zero values or nulls") | a `Flatten` transform keeps Debezium's envelope and names every field `after.<column>`, while the sink table names its columns as Postgres does; sinks match fields to columns by name | `sink-column-flattened` |
 | A ClickHouse materialized view writes defaults | a refreshable view's `SELECT` order differs from the target's (it matches by position), or a streaming view's names differ (it matches by name) | `mv-column-match` |
 
 It reads files only: Postgres sources today, no type checks, no connection to
@@ -73,6 +74,7 @@ anything running.
 | `captured-column-missing` | the include list names a column the source does not have (warning) | v0.1 |
 | `captured-table-missing` | a `table.include.list` entry matches no table: a typo, a missing schema (`orders` for `public.orders`), or a shell glob (`public.bg_*`) where Debezium reads a regular expression; the last two get the corrected entry as the fix (warning) | next |
 | `topic-table-mapping` | a Kafka-engine table reads a topic the connector will not produce | v0.1 |
+| `sink-column-flattened` | a sink table names its columns as the source does while a `Flatten` transform on the way delivers the envelope as `after.<column>`, so every column stays at its default | next |
 | `mv-column-match` | ClickHouse streaming materialized views match by name, refreshable ones by position. ClickHouse 25.4 and later reject a streaming view that writes a column the target lacks when it is created; a refreshable view's order mismatch was loud on 24.8 and is silent on 26.8 | v0.1 |
 | `schema-before-connector` | this change adds a column to a captured table and leaves it out of the stream without deciding to, the trap itself, judged on the diff (warning: leaving PII off is right, so it asks for the decision) | v0.2 |
 | `replica-identity` | a captured table's replica identity cannot supply what the sink reads | next |
@@ -214,6 +216,17 @@ Without a sink connector config, a sink table maps to the source table of the
 same name, and the finding says so. Debezium's `RegexRouter` transform is
 applied when computing topic names. Other sources (MySQL, SQL Server) and
 sinks are packages behind the same two interfaces.
+
+Transforms on either connector decide what the sink receives, and cdclint
+follows the documented ones in order: Debezium's `ExtractNewRecordState` (or the
+Iceberg `DebeziumTransform`) unwraps the envelope into the row, and Kafka
+Connect's `Flatten` turns the envelope into `after.<column>`, `before.<column>`,
+`source.<field>`, `op` and `ts_ms` (its `delimiter` included). A sink table
+named that way, as in ClickHouse's own CDC example, is matched through
+`after.` and `before.` to the source columns. Routers, key transforms and
+`Filter` change no field name. Any other transform that touches the value, or a
+modelled one applied under a predicate, leaves the shape unknown, and cdclint
+then reads the sink's column names as the row's, as it always has.
 
 ## Design
 

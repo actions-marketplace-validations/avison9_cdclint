@@ -1,0 +1,23 @@
+{
+  "connector.class": "PostgresCdcSource",
+  "name": "uk_price_paid_changes",
+  "database.server.name": "postgres",
+  "database.dbname": "postgres",
+  "publication.name": "dbz_publication",
+  "publication.autocreate.mode": "filtered",
+  "table.include.list": "public.uk_price_paid",
+  "column.include.list": "public\\.uk_price_paid\\.(id|price|postcode1|town)",
+  "snapshot.mode": "never",
+  "tombstones.on.delete": "false",
+  "plugin.name": "pgoutput",
+  "output.data.format": "JSON",
+  "after.state.only": "false",
+  "output.key.format": "STRING",
+  "tasks.max": "1",
+  "transforms": "flatten,set_topic",
+  "transforms.flatten.type": "org.apache.kafka.connect.transforms.Flatten$Value",
+  "transforms.flatten.delimiter": ".",
+  "transforms.set_topic.type": "io.confluent.connect.cloud.transforms.TopicRegexRouter",
+  "transforms.set_topic.regex": ".*",
+  "transforms.set_topic.replacement": "uk_price_paid_changes"
+}

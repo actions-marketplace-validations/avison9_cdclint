@@ -1,0 +1,9 @@
+error sink-column-not-captured flatten-envelope-columns/sink/0001_uk_price_paid_changes.sql:6
+  public.uk_price_paid.postcode2 is read by default.uk_price_paid_changes (is fed topic uk_price_paid_changes by flatten-envelope-columns/sink-connector.json) but is not matched by column.include.list in flatten-envelope-columns/connector.json
+  every row will carry the column's default, with no error anywhere
+  fix: add public.uk_price_paid.postcode2 to column.include.list, deploy the connector, then apply the sink schema; rows already written need a snapshot
+error sink-column-not-captured flatten-envelope-columns/sink/0001_uk_price_paid_changes.sql:11
+  public.uk_price_paid.postcode2 is read by default.uk_price_paid_changes (is fed topic uk_price_paid_changes by flatten-envelope-columns/sink-connector.json) but is not matched by column.include.list in flatten-envelope-columns/connector.json
+  every row will carry the column's default, with no error anywhere
+  fix: add public.uk_price_paid.postcode2 to column.include.list, deploy the connector, then apply the sink schema; rows already written need a snapshot
+2 error(s), 0 warning(s), 0 info

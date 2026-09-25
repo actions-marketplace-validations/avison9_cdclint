@@ -19,6 +19,7 @@ import (
 	"strings"
 
 	"github.com/avison9/cdclint/internal/model"
+	"github.com/avison9/cdclint/internal/smt"
 )
 
 // Contract implements model.Contract for a Postgres, MySQL or SQL Server
@@ -35,6 +36,7 @@ type Contract struct {
 	columnPatterns []string
 	tablePatterns  []string
 	routers        []router
+	shape          model.Shape
 	Config         map[string]string
 	Class          string
 	Name           string
@@ -126,6 +128,7 @@ func Parse(b []byte) (*Contract, error) {
 		c.tableListKey = "table.include.list"
 	}
 	c.routers = routers(cfg)
+	c.shape = smt.Apply(cfg, "", smt.Start(cfg))
 	return c, nil
 }
 
@@ -194,6 +197,16 @@ func anyMatch(res []*regexp.Regexp, s string) bool {
 }
 
 func (c *Contract) Pos() model.Pos { return c.pos }
+
+// ValueShape is what the change events look like after this connector's own
+// transforms, for the engine to match sink columns against.
+func (c *Contract) ValueShape() model.Shape {
+	s := c.shape
+	if s.Kind == model.ShapeFlattened {
+		s.File = c.pos.File
+	}
+	return s
+}
 
 func (c *Contract) CapturesTable(schema, table string) bool {
 	q := schema + "." + table

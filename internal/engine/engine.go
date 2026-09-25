@@ -44,6 +44,49 @@ type Read struct {
 	Mapping model.Mapping
 	Topic   string
 	Mapper  *connect.Mapper
+	// Field is the source column the sink column receives: its own name, or
+	// the column under after<d> or before<d> in a flattened envelope. It is
+	// empty for a column no field reaches (see Unreached).
+	Field string
+	// Unreached marks a column named after a source column that receives
+	// nothing, because the value arrives under after<d> instead.
+	Unreached bool
+	Shape     model.Shape
+}
+
+// ShapeLister is implemented by contracts that know what their events look
+// like after their own transforms.
+type ShapeLister interface {
+	ValueShape() model.Shape
+}
+
+// envelopeFields are the flattened envelope's own fields besides before and
+// after (Debezium's change event structure; ts_us and ts_ns since 2.6).
+var envelopeFields = map[string]bool{"op": true, "ts_ms": true, "ts_us": true, "ts_ns": true}
+
+// field works out which source column a sink column receives under shape.
+// skip is true for fields the connector or sink adds around the row.
+func field(shape model.Shape, table *model.Table, name string) (col string, unreached, skip bool) {
+	if isMetadata(name) {
+		return "", false, true
+	}
+	if shape.Kind != model.ShapeFlattened {
+		return name, false, false
+	}
+	d := shape.Delimiter
+	lower := strings.ToLower(name)
+	for _, image := range []string{"after", "before"} {
+		if strings.HasPrefix(lower, image+d) {
+			return name[len(image)+len(d):], false, false
+		}
+	}
+	if envelopeFields[lower] || strings.HasPrefix(lower, "source"+d) || strings.HasPrefix(lower, "transaction"+d) {
+		return "", false, true
+	}
+	if table.Column(name) != nil {
+		return "", true, false
+	}
+	return name, false, false
 }
 
 // isMetadata reports whether a sink column is one the connector or the
@@ -64,6 +107,10 @@ func isMetadata(name string) bool {
 // a topic nothing produces.
 func resolve(in *Input) []Read {
 	var reads []Read
+	var source model.Shape
+	if sl, ok := in.Contract.(ShapeLister); ok {
+		source = sl.ValueShape()
+	}
 	byTopic := map[string]*model.Table{}
 	for _, t := range in.Source.Tables {
 		byTopic[in.Contract.Topic(t.Schema, t.Name)] = t
@@ -112,11 +159,17 @@ func resolve(in *Input) []Read {
 				}
 				continue
 			}
+			shape := source
+			if mapper != nil {
+				shape = mapper.Reshape(source)
+			}
 			for _, c := range st.Columns {
-				if isMetadata(c.Name) {
+				f, unreached, skip := field(shape, table, c.Name)
+				if skip {
 					continue
 				}
-				reads = append(reads, Read{Sink: st, Column: c, Table: table, Mapping: mapping, Topic: topic, Mapper: mapper})
+				reads = append(reads, Read{Sink: st, Column: c, Table: table, Mapping: mapping, Topic: topic, Mapper: mapper,
+					Field: f, Unreached: unreached, Shape: shape})
 			}
 		}
 	}
@@ -131,6 +184,7 @@ func Run(in *Input) []model.Finding {
 	fs = append(fs, sinkTableNotCaptured(in, reads)...)
 	fs = append(fs, sinkColumnNotCaptured(in, reads)...)
 	fs = append(fs, sinkColumnUnknown(in, reads)...)
+	fs = append(fs, sinkColumnFlattened(reads)...)
 	// The diff rule runs before the inventory so a column it raised as a
 	// warning is not listed again as information.
 	diff, raised := schemaBeforeConnector(in, reads)
@@ -216,8 +270,8 @@ func sinkColumnNotCaptured(in *Input, reads []Read) []model.Finding {
 		if r.Table == nil || !in.Contract.CapturesTable(r.Table.Schema, r.Table.Name) {
 			continue
 		}
-		src := r.Table.Column(r.Column.Name)
-		if src == nil || in.Contract.CapturesColumn(r.Table.Schema, r.Table.Name, src.Name) {
+		src := r.Table.Column(r.Field)
+		if r.Unreached || src == nil || in.Contract.CapturesColumn(r.Table.Schema, r.Table.Name, src.Name) {
 			continue
 		}
 		q := fmt.Sprintf("%s.%s.%s", r.Table.Schema, r.Table.Name, src.Name)
@@ -230,10 +284,44 @@ func sinkColumnNotCaptured(in *Input, reads []Read) []model.Finding {
 	return fs
 }
 
+// sinkColumnFlattened raises a sink table whose columns carry the row's
+// names while a flatten transform delivers the envelope: every field arrives
+// as after<d>column, the sink matches by name, and the columns are left at
+// their defaults (ClickHouse/clickhouse-kafka-connect discussion 182). One
+// finding per table, since one transform causes all of them.
+func sinkColumnFlattened(reads []Read) []model.Finding {
+	var fs []model.Finding
+	var order []*model.SinkTable
+	names := map[*model.SinkTable][]string{}
+	first := map[*model.SinkTable]Read{}
+	for _, r := range reads {
+		if !r.Unreached {
+			continue
+		}
+		if _, ok := names[r.Sink]; !ok {
+			order = append(order, r.Sink)
+			first[r.Sink] = r
+		}
+		names[r.Sink] = append(names[r.Sink], r.Column.Name)
+	}
+	for _, st := range order {
+		r := first[st]
+		cols := names[st]
+		fs = append(fs, model.Finding{
+			Rule: "sink-column-flattened", Severity: model.Error, Pos: st.Pos,
+			Message: fmt.Sprintf("%s (%s) reads %s by their names in %s.%s, but %s in %s flattens each change event, so every one arrives as after%s<column>\nevery row will carry the columns' defaults, with no error anywhere",
+				st.Name, how(r), strings.Join(cols, ", "), r.Table.Schema, r.Table.Name, r.Shape.Transform, r.Shape.File, r.Shape.Delimiter),
+			Fix: fmt.Sprintf("rename them after%s%s and so on, or unwrap the event with io.debezium.transforms.ExtractNewRecordState in place of %s",
+				r.Shape.Delimiter, cols[0], r.Shape.Transform),
+		})
+	}
+	return fs
+}
+
 func sinkColumnUnknown(in *Input, reads []Read) []model.Finding {
 	var fs []model.Finding
 	for _, r := range reads {
-		if r.Table == nil || r.Table.Column(r.Column.Name) != nil {
+		if r.Table == nil || r.Unreached || r.Table.Column(r.Field) != nil {
 			continue
 		}
 		fs = append(fs, model.Finding{
@@ -248,8 +336,8 @@ func sourceColumnNotCaptured(in *Input, reads []Read, raised map[string]bool) []
 	var fs []model.Finding
 	declared := map[string]bool{}
 	for _, r := range reads {
-		if r.Table != nil {
-			declared[strings.ToLower(r.Table.Qualified()+"."+r.Column.Name)] = true
+		if r.Table != nil && !r.Unreached {
+			declared[strings.ToLower(r.Table.Qualified()+"."+r.Field)] = true
 		}
 	}
 	for _, t := range in.Source.Tables {
