@@ -1,0 +1,5 @@
+error sink-table-not-captured mysql-database-not-included/sink/0001_invoices.sql:1
+  kafka_invoices reads topic shopdb.billing.invoices, but billing is not matched by database.include.list in mysql-database-not-included/connector.json
+  nothing will ever arrive on that topic
+  fix: add billing to database.include.list and deploy the connector before the sink schema
+1 error(s), 0 warning(s), 0 info

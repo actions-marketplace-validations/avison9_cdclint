@@ -29,6 +29,13 @@ type Input struct {
 	Base *Base
 }
 
+// TableBlocker is implemented by contracts with more than one list that can
+// keep a table out (MySQL's database lists besides the table list), so a
+// finding names the list to edit and what to put in it.
+type TableBlocker interface {
+	TableBlock(schema, table string) (setting, entry string)
+}
+
 // PatternLister is implemented by contracts whose column and table lists are
 // sets of patterns that can be checked one by one.
 type PatternLister interface {
@@ -255,10 +262,14 @@ func sinkTableNotCaptured(in *Input, reads []Read) []model.Finding {
 			continue
 		}
 		seen[r.Sink] = true
+		setting, entry := in.Contract.TableListSetting(), r.Table.Schema+"."+r.Table.Name
+		if tb, ok := in.Contract.(TableBlocker); ok {
+			setting, entry = tb.TableBlock(r.Table.Schema, r.Table.Name)
+		}
 		fs = append(fs, model.Finding{
 			Rule: "sink-table-not-captured", Severity: model.Error, Pos: r.Sink.Pos,
-			Message: fmt.Sprintf("%s %s, but %s.%s %s in %s\nnothing will ever arrive on that topic", r.Sink.Name, how(r), r.Table.Schema, r.Table.Name, leftOut(in.Contract.TableListSetting()), in.Contract.Pos().File),
-			Fix:     edit(in.Contract.TableListSetting(), r.Table.Schema+"."+r.Table.Name) + " and deploy the connector before the sink schema",
+			Message: fmt.Sprintf("%s %s, but %s %s in %s\nnothing will ever arrive on that topic", r.Sink.Name, how(r), entry, leftOut(setting), in.Contract.Pos().File),
+			Fix:     edit(setting, entry) + " and deploy the connector before the sink schema",
 		})
 	}
 	return fs

@@ -24,7 +24,7 @@ import (
 	"github.com/avison9/cdclint/internal/sink/clickhouse"
 	"github.com/avison9/cdclint/internal/sink/connect"
 	"github.com/avison9/cdclint/internal/sink/sqlddl"
-	"github.com/avison9/cdclint/internal/source/postgres"
+	"github.com/avison9/cdclint/internal/source"
 )
 
 // version is set by the release build with -ldflags "-X main.version=...".
@@ -42,7 +42,7 @@ func main() {
 func run(args []string) int {
 	fs := flag.NewFlagSet("cdclint", flag.ContinueOnError)
 	var (
-		migrations = fs.String("migrations", "", "directory of source migrations, applied in name order (Postgres)")
+		migrations = fs.String("migrations", "", "directory of source migrations, applied in name order; Postgres or MySQL, from the connector class, or say it with postgres:DIR or mysql:DIR")
 		connector  = fs.String("connector", "", "Debezium source connector JSON")
 		sinks      multi
 		sinkConns  multi
@@ -144,11 +144,15 @@ func load(migrations, connector string, sinks, sinkConns []string) (*engine.Inpu
 // Load is exported for the corpus test, which runs the tool exactly as the
 // command line does.
 func Load(migrations, connector string, sinks, sinkConns []string) (*engine.Input, error) {
-	src, _, err := readSource(migrations)
+	c, err := debezium.ReadFile(connector)
 	if err != nil {
 		return nil, err
 	}
-	c, err := debezium.ReadFile(connector)
+	reader, dir, err := pickSource(migrations, c)
+	if err != nil {
+		return nil, err
+	}
+	src, _, err := reader.readDir(dir)
 	if err != nil {
 		return nil, err
 	}
@@ -198,55 +202,73 @@ func LoadBase(ref, migrations, connector string) (*engine.Base, error) {
 	if err != nil {
 		return nil, fmt.Errorf("--base: %w", err)
 	}
+	// The dialect and the database come from the connector as it is now:
+	// the base's may not exist, and the source did not change dialect.
+	head, err := debezium.ReadFile(connector)
+	if err != nil {
+		return nil, err
+	}
+	reader, migrations, err := pickSource(migrations, head)
+	if err != nil {
+		return nil, err
+	}
 	files, err := gitread.Dir(ref, migrations)
 	if err != nil {
 		return nil, fmt.Errorf("--base: %w", err)
 	}
-	var named []postgres.NamedFile
+	var named []source.NamedFile
 	for _, f := range files {
-		named = append(named, postgres.NamedFile{Path: f.Path, Text: f.Text})
+		named = append(named, source.NamedFile{Path: f.Path, Text: f.Text})
 	}
 	exists, err := gitread.Exists(ref, connector)
 	if err != nil {
 		return nil, fmt.Errorf("--base: %w", err)
 	}
 	if !exists {
-		return baseFrom(id, named, nil, true)
+		return baseFrom(id, reader, named, nil, true)
 	}
 	changed, err := gitread.Changed(ref, connector)
 	if err != nil {
 		return nil, fmt.Errorf("--base: %w", err)
 	}
 	if !changed {
-		return baseFrom(id, named, nil, false)
+		return baseFrom(id, reader, named, nil, false)
 	}
 	text, err := gitread.Show(ref, connector)
 	if err != nil {
 		return nil, fmt.Errorf("--base: %w", err)
 	}
-	return baseFrom(id, named, []byte(text), true)
+	return baseFrom(id, reader, named, []byte(text), true)
 }
 
 // BaseFromFiles builds the base from migrations already in memory and the
 // connector's text at the base and now; the corpus test feeds it from a
 // base/ directory, so the diff rule is tested without a repository. A nil
 // baseConnector is a connector that did not exist at the base.
-func BaseFromFiles(ref string, migrations []postgres.NamedFile, baseConnector, headConnector []byte) (*engine.Base, error) {
+func BaseFromFiles(ref string, migrations []source.NamedFile, baseConnector, headConnector []byte) (*engine.Base, error) {
+	head, err := debezium.Parse(headConnector)
+	if err != nil {
+		return nil, err
+	}
+	reader, _, err := pickSource("", head)
+	if err != nil {
+		return nil, err
+	}
 	if baseConnector == nil {
-		return baseFrom(ref, migrations, nil, true)
+		return baseFrom(ref, reader, migrations, nil, true)
 	}
 	if string(baseConnector) == string(headConnector) {
-		return baseFrom(ref, migrations, nil, false)
+		return baseFrom(ref, reader, migrations, nil, false)
 	}
-	return baseFrom(ref, migrations, baseConnector, true)
+	return baseFrom(ref, reader, migrations, baseConnector, true)
 }
 
 // baseFrom parses the base's migrations and, when given, its connector. A
 // parse failure there is an error, because the base once ran and its
 // config once parsed, so the failure is in the reader and hiding it would
 // hide the rule.
-func baseFrom(ref string, migrations []postgres.NamedFile, connector []byte, changed bool) (*engine.Base, error) {
-	src, err := postgres.ReadFiles(migrations)
+func baseFrom(ref string, reader sourceReader, migrations []source.NamedFile, connector []byte, changed bool) (*engine.Base, error) {
+	src, err := reader.readFiles(migrations)
 	if err != nil {
 		return nil, fmt.Errorf("--base %s: %w", ref, err)
 	}

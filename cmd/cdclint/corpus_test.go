@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/avison9/cdclint/internal/engine"
-	"github.com/avison9/cdclint/internal/source/postgres"
+	"github.com/avison9/cdclint/internal/source"
 )
 
 // update rewrites every expected.txt from the current output. Run it after
@@ -110,13 +110,13 @@ func baseFromDir(t *testing.T, dir, headConnector string) *engine.Base {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var files []postgres.NamedFile
+	var files []source.NamedFile
 	for _, e := range entries {
 		b, err := os.ReadFile(filepath.Join(dir, "migrations", e.Name()))
 		if err != nil {
 			t.Fatal(err)
 		}
-		files = append(files, postgres.NamedFile{Path: filepath.Join(dir, "migrations", e.Name()), Text: string(b)})
+		files = append(files, source.NamedFile{Path: filepath.Join(dir, "migrations", e.Name()), Text: string(b)})
 	}
 	sort.Slice(files, func(i, j int) bool { return files[i].Path < files[j].Path })
 	// No connector.json under base/ means the connector is new in the

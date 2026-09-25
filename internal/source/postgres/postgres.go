@@ -10,14 +10,12 @@ package postgres
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
-	"sort"
 	"strings"
 
 	"github.com/avison9/cdclint/internal/ddl"
 	"github.com/avison9/cdclint/internal/migrate"
 	"github.com/avison9/cdclint/internal/model"
+	"github.com/avison9/cdclint/internal/source"
 	"github.com/avison9/cdclint/internal/sqlsplit"
 )
 
@@ -27,34 +25,16 @@ const DefaultSchema = "public"
 
 // ReadDir applies every *.sql file in dir, sorted by name.
 func ReadDir(dir string) (*model.Source, []string, error) {
-	entries, err := os.ReadDir(dir)
+	named, files, err := source.ReadDir(dir)
 	if err != nil {
 		return nil, nil, err
-	}
-	var files []string
-	for _, e := range entries {
-		if !e.IsDir() && strings.HasSuffix(strings.ToLower(e.Name()), ".sql") {
-			files = append(files, filepath.Join(dir, e.Name()))
-		}
-	}
-	sort.Strings(files)
-	var named []NamedFile
-	for _, f := range files {
-		b, err := os.ReadFile(f)
-		if err != nil {
-			return nil, nil, err
-		}
-		named = append(named, NamedFile{Path: f, Text: string(b)})
 	}
 	src, err := ReadFiles(named)
 	return src, files, err
 }
 
 // NamedFile is one migration's content, named by the path findings show.
-type NamedFile struct {
-	Path string
-	Text string
-}
+type NamedFile = source.NamedFile
 
 // ReadFiles applies migrations already in memory, in the order given.
 // Down migrations are skipped: a forward migrate never runs them.
