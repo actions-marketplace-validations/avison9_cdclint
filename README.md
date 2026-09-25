@@ -3,9 +3,9 @@
 Lint the contract between your database, your Debezium connector and your
 sink, before the deploy that silently drops a column.
 
-**Status: v0.2.** Eight rules run against a corpus of real incidents; two
-more are next. Released for macOS, Linux and Windows, on Homebrew and on the
-GitHub Marketplace.
+**Status: v0.3.** Ten rules run against a corpus of real incidents; two
+more are next. Reads Postgres and MySQL (or MariaDB) sources. Released for
+macOS, Linux and Windows, on Homebrew and on the GitHub Marketplace.
 
 ## Why are my columns null?
 
@@ -72,9 +72,9 @@ anything running.
 | `sink-column-unknown` | the sink expects a field the source table does not have (warning; renames and computed fields are legitimate) | v0.1 |
 | `source-column-not-captured` | a source column nothing captures and nothing reads yet, so the day something asks for it is the day it is found missing (info) | v0.1 |
 | `captured-column-missing` | the include list names a column the source does not have (warning) | v0.1 |
-| `captured-table-missing` | a `table.include.list` entry matches no table: a typo, a missing schema (`orders` for `public.orders`), or a shell glob (`public.bg_*`) where Debezium reads a regular expression; the last two get the corrected entry as the fix (warning) | next |
+| `captured-table-missing` | a `table.include.list` entry matches no table: a typo, a missing schema (`orders` for `public.orders`), or a shell glob (`public.bg_*`) where Debezium reads a regular expression; the last two get the corrected entry as the fix (warning) | v0.3 |
 | `topic-table-mapping` | a Kafka-engine table reads a topic the connector will not produce | v0.1 |
-| `sink-column-flattened` | a sink table names its columns as the source does while a `Flatten` transform on the way delivers the envelope as `after.<column>`, so every column stays at its default | next |
+| `sink-column-flattened` | a sink table names its columns as the source does while a `Flatten` transform on the way delivers the envelope as `after.<column>`, so every column stays at its default | v0.3 |
 | `mv-column-match` | ClickHouse streaming materialized views match by name, refreshable ones by position. ClickHouse 25.4 and later reject a streaming view that writes a column the target lacks when it is created; a refreshable view's order mismatch was loud on 24.8 and is silent on 26.8 | v0.1 |
 | `schema-before-connector` | this change adds a column to a captured table and leaves it out of the stream without deciding to, the trap itself, judged on the diff (warning: leaving PII off is right, so it asks for the decision) | v0.2 |
 | `replica-identity` | a captured table's replica identity cannot supply what the sink reads | next |
