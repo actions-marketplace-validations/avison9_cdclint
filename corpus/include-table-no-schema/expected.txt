@@ -1,0 +1,9 @@
+warning captured-table-missing include-table-no-schema/connector.json
+  ipaddrs in table.include.list matches no table in the source schema
+  Debezium matches each entry against the whole schema.table name
+  fix: write myschema\.ipaddrs, or remove it
+error sink-table-not-captured include-table-no-schema/sink/0001_ipaddrs.sql:3
+  kafka_ipaddrs reads topic test.myschema.ipaddrs, but myschema.ipaddrs is not matched by table.include.list in include-table-no-schema/connector.json
+  nothing will ever arrive on that topic
+  fix: add myschema.ipaddrs to table.include.list and deploy the connector before the sink schema
+1 error(s), 1 warning(s), 0 info

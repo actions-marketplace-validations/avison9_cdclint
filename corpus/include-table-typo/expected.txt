@@ -1,0 +1,8 @@
+warning captured-table-missing include-table-typo/connector.json
+  public.oders in table.include.list matches no table in the source schema
+  fix: remove it, or check the spelling against the migrations
+error sink-table-not-captured include-table-typo/sink/0001_orders.sql:1
+  kafka_orders reads topic shop.public.orders, but public.orders is not matched by table.include.list in include-table-typo/connector.json
+  nothing will ever arrive on that topic
+  fix: add public.orders to table.include.list and deploy the connector before the sink schema
+1 error(s), 1 warning(s), 0 info
