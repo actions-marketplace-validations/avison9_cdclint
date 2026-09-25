@@ -1,0 +1,21 @@
+{
+  "config": {
+    "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+    "plugin.name": "pgoutput",
+    "database.server.name": "postgres",
+    "table.include.list": "public.testradiomeas",
+    "topic.prefix": "testprefix",
+    "publication.name": "myint_logical_replication",
+    "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "value.converter.schemas.enable": "false",
+    "snapshot.mode": "never",
+    "tombstones.on.delete": "false",
+    "decimal.handling.mode": "double",
+    "transforms": "set_topic,flatten",
+    "transforms.flatten.type": "org.apache.kafka.connect.transforms.Flatten$Value",
+    "transforms.flatten.delimiter": ".",
+    "transforms.set_topic.type": "org.apache.kafka.connect.transforms.RegexRouter",
+    "transforms.set_topic.regex": ".*",
+    "transforms.set_topic.replacement": "testradiomeas"
+  }
+}

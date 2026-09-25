@@ -79,8 +79,8 @@ func schemaBeforeConnector(in *Input, reads []Read) ([]model.Finding, map[string
 	}
 	read := map[string]bool{}
 	for _, r := range reads {
-		if r.Table != nil {
-			read[strings.ToLower(r.Table.Qualified()+"."+r.Column.Name)] = true
+		if r.Table != nil && !r.Unreached {
+			read[strings.ToLower(r.Table.Qualified()+"."+r.Field)] = true
 		}
 	}
 	var fs []model.Finding
