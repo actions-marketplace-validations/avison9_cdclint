@@ -43,6 +43,24 @@ resnapshot of the table.
 cdclint reads the three files in the pull request that changes any of them and
 fails it with the line to add.
 
+## Symptoms it prevents
+
+If you arrived here searching for one of these, the cause may be sitting in
+your repository, and cdclint reads it:
+
+| what you see | what is usually wrong | rule |
+|---|---|---|
+| A column is `0`, `''`, `NULL` or `1970-01-01` on every row in ClickHouse, BigQuery, Snowflake or Iceberg, with nothing in the logs | the column is not on the connector's `column.include.list` (or is on its exclude list), so Debezium drops it before Kafka | `sink-column-not-captured` |
+| A column added in Postgres never shows up downstream | the migration added it and nobody added it to the include list | `schema-before-connector` (with `--base`), `sink-column-not-captured` |
+| Listing the columns of one table made another table's columns disappear | `column.include.list` is one list for every captured table | `sink-column-not-captured` |
+| "`table.include.list` not working", or the connector is `RUNNING` and no topic appears | the entry has no schema (`orders` for `public.orders`), or is a glob (`public.bg_*`) where Debezium expects a regex (`public\.bg_.*`); Debezium matches each entry against the whole `schema.table` name, never a substring | `sink-table-not-captured`, when a sink reads the table |
+| A Kafka-engine table or sink receives nothing, or the wrong table fills | the topic it reads is not the one the connector produces (prefix, schema, `RegexRouter`) | `topic-table-mapping` |
+| A typo in the include list, and a column quietly missing | the pattern matches no column in the source | `captured-column-missing` |
+| A ClickHouse materialized view writes defaults | a refreshable view's `SELECT` order differs from the target's (it matches by position), or a streaming view's names differ (it matches by name) | `mv-column-match` |
+
+It reads files only: Postgres sources today, no type checks, no connection to
+anything running.
+
 ## What it checks
 
 | rule | catches | status |
@@ -53,7 +71,7 @@ fails it with the line to add.
 | `source-column-not-captured` | a source column nothing captures and nothing reads yet, so the day something asks for it is the day it is found missing (info) | v0.1 |
 | `captured-column-missing` | the include list names a column the source does not have (warning) | v0.1 |
 | `topic-table-mapping` | a Kafka-engine table reads a topic the connector will not produce | v0.1 |
-| `mv-column-match` | ClickHouse streaming materialized views match by name, refreshable ones by position; the mismatch is loud on 24.8 and silent on 26.8 | v0.1 |
+| `mv-column-match` | ClickHouse streaming materialized views match by name, refreshable ones by position. ClickHouse 25.4 and later reject a streaming view that writes a column the target lacks when it is created; a refreshable view's order mismatch was loud on 24.8 and is silent on 26.8 | v0.1 |
 | `schema-before-connector` | this change adds a column to a captured table and leaves it out of the stream without deciding to, the trap itself, judged on the diff (warning: leaving PII off is right, so it asks for the decision) | v0.2 |
 | `replica-identity` | a captured table's replica identity cannot supply what the sink reads | next |
 | `migration-numbering` | duplicate or gapped migration prefixes | next |
@@ -95,6 +113,31 @@ With Go:
 ```
 go install github.com/avison9/cdclint/cmd/cdclint@latest
 ```
+
+## Try it on a known failure
+
+The [corpus](corpus/) holds real failures. This one is a typo in
+`column.include.list`:
+
+```
+git clone https://github.com/avison9/cdclint && cd cdclint
+cdclint --migrations corpus/include-list-typo/migrations \
+        --connector corpus/include-list-typo/connector.json \
+        --sink corpus/include-list-typo/sink
+```
+
+```
+warning captured-column-missing corpus/include-list-typo/connector.json
+  public.report_validations\.reponded_at in column.include.list matches no column in the source schema
+  fix: remove it, or check the spelling against the migrations
+error sink-column-not-captured corpus/include-list-typo/sink/0020_report_validations.sql:12
+  public.report_validations.responded_at is read by kafka_report_validations (reads topic rr.public.report_validations) but is not matched by column.include.list in corpus/include-list-typo/connector.json
+  every row will carry the column's default, with no error anywhere
+  fix: add public.report_validations.responded_at to column.include.list, deploy the connector, then apply the sink schema; rows already written need a snapshot
+1 error(s), 1 warning(s), 0 info
+```
+
+The exit code is 1, which is what fails the pull request.
 
 ## Run it
 
