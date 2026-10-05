@@ -3,9 +3,11 @@
 Lint the contract between your database, your Debezium connector and your
 sink, before the deploy that silently drops a column.
 
-**Status: v0.3.** Ten rules run against a corpus of real incidents; two
-more are next. Reads Postgres and MySQL (or MariaDB) sources. Released for
-macOS, Linux and Windows, on Homebrew and on the GitHub Marketplace.
+**Status: v0.4.** Ten rules run against a corpus of real incidents; two
+more are next. Reads Postgres and MySQL (or MariaDB) sources. `--disable`
+leaves a rule out and `cdclint:ignore` records a decision on the line it is
+about. Released for macOS, Linux and Windows, on Homebrew and on the GitHub
+Marketplace.
 
 ## Why are my columns null?
 
